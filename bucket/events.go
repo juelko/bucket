@@ -1,85 +1,111 @@
 package bucket
 
 import (
-	"errors"
+	stderr "errors"
 	"time"
+
+	"github.com/juelko/bucket/pkg/errors"
+)
+
+var (
+	ErrBucketIsClosed error = stderr.New("Bucket is closed")
 )
 
 type Event interface {
-	ID() string
-	Kind() string
+	StreamID() string
+	Type() string
 	OccuredAt() time.Time
 	Version() uint
 	RequestID() string
 }
 
+// BaseRequest holds common field for all requests
+type BaseRequest struct {
+	ID        string `validate:"alphanum,min=3,max=64"`
+	RequestID string `validate:"uuid4_rfc4122"`
+}
+
+// BaseEvent has common fields and methods to all domain events.
+// When BaseEvent is embedded, Domain Event only needs Type() method to satisfy Event interface
+type BaseEvent struct {
+	ID      string    `validate:"alphanum,min=3,max=64"`
+	Occured time.Time `validate:"required" deep:"-"`
+	ReqID   string    `validate:"uuid4_rfc4122"`
+	V       uint      `validate:"gt=0"`
+}
+
+func (be BaseEvent) StreamID() string {
+	return be.ID
+}
+
+func (be BaseEvent) Version() uint {
+	return be.V
+}
+
+func (be BaseEvent) RequestID() string {
+	return be.ReqID
+}
+
+func (be BaseEvent) OccuredAt() time.Time {
+	return be.Occured
+}
+
 type OpenRequest struct {
-	ID          BucketID
-	Name        string
+	BaseRequest
+	Name        string `validate:"alphanum,min=3,max=64"`
 	Description string
-	RequestID   string
 }
 
+// Opened is a domain event and is emitted when bucket is opened
 type Opened struct {
-	baseEvent
-	Name        string
+	BaseEvent
+	Name        string `validate:"alphanum,min=3,max=64"`
 	Description string
 }
 
-func (e Opened) Kind() string {
+func (e Opened) Type() string {
 	return "bucket.Opened"
 }
 
-func Open(req OpenRequest) Event {
+func Open(req *OpenRequest) Event {
+	const op errors.Op = "bucket.Open"
 
-	if err := req.ID.Validate(); err != nil {
-		return newErrorEvent(err, req.RequestID)
+	if err := validateStruct(req); err != nil {
+		return newErrorEvent(errors.New(op, errors.KindValidation, "Request validation failed", err), req.RequestID)
 	}
 
-	if req.Name == "" {
-		err := errors.New("Name cannot be empty")
-		return newErrorEvent(err, req.RequestID)
-	}
-
-	be := baseEvent{
-		id:      req.ID,
-		occured: time.Now(),
-		rid:     req.RequestID,
-		version: 1,
+	be := BaseEvent{
+		ID:      req.ID,
+		Occured: time.Now(),
+		ReqID:   req.RequestID,
+		V:       1,
 	}
 
 	return Opened{be, req.Name, req.Description}
 }
 
 type CloseRequest struct {
-	ID        BucketID
-	RequestID string
+	BaseRequest
 }
 
 type Closed struct {
-	baseEvent
+	BaseEvent
 }
 
-func (e Closed) Kind() string {
+func (e Closed) Type() string {
 	return "bucket.Closed"
 }
 
-func Close(req CloseRequest, stream []Event) Event {
+func Close(req *CloseRequest, stream []Event) Event {
+	const op errors.Op = "bucket.Close"
 
-	if err := req.ID.Validate(); err != nil {
-		return newErrorEvent(err, req.RequestID)
+	if err := validateStruct(req); err != nil {
+		return newErrorEvent(errors.New(op, errors.KindValidation, err), req.RequestID)
 	}
 
-	s := newState(stream)
-
-	if s.version == 0 {
-		err := errors.New("Empty stream")
-		return newErrorEvent(err, req.RequestID)
-	}
-
-	if req.ID == s.id {
-		err := errors.New("ID Mismatch")
-		return newErrorEvent(err, req.RequestID)
+	s, err := newState(req.ID, stream)
+	if err != nil {
+		return newErrorEvent(errors.New(op, errors.KindUnexpected, err), req.RequestID)
 	}
 
 	if s.closed {
@@ -87,11 +113,11 @@ func Close(req CloseRequest, stream []Event) Event {
 		return newErrorEvent(err, req.RequestID)
 	}
 
-	be := baseEvent{
-		id:      req.ID,
-		occured: time.Now(),
-		version: s.version + 1,
-		rid:     req.RequestID,
+	be := BaseEvent{
+		ID:      req.ID,
+		Occured: time.Now(),
+		V:       s.v + 1,
+		ReqID:   req.RequestID,
 	}
 
 	return Closed{be}
@@ -99,33 +125,31 @@ func Close(req CloseRequest, stream []Event) Event {
 }
 
 type UpdateRequest struct {
-	ID          BucketID
+	BaseRequest
+	Name        string `validate:"alphanum,min=3,max=64"`
+	Description string
+}
+
+type Updated struct {
+	BaseEvent
 	Name        string
 	Description string
-	RequestID   string
+}
+
+func (e Updated) Type() string {
+	return "bucket.Updated"
 }
 
 func Update(req UpdateRequest, stream []Event) Event {
+	const op errors.Op = "bucket.Update"
 
-	if err := req.ID.Validate(); err != nil {
-		return newErrorEvent(err, req.RequestID)
+	if err := validate.Struct(req); err != nil {
+		return newErrorEvent(errors.New(op, errors.KindValidation, err), req.RequestID)
 	}
 
-	if req.Name == "" {
-		err := errors.New("Name cannot be empty")
-		return newErrorEvent(err, req.RequestID)
-	}
-
-	s := newState(stream)
-
-	if s.version == 0 {
-		err := errors.New("Empty stream")
-		return newErrorEvent(err, req.RequestID)
-	}
-
-	if req.ID == s.id {
-		err := errors.New("ID Mismatch")
-		return newErrorEvent(err, req.RequestID)
+	s, err := newState(req.ID, stream)
+	if err != nil {
+		return newErrorEvent(errors.New(op, errors.KindUnexpected, err), req.RequestID)
 	}
 
 	if s.closed {
@@ -133,66 +157,34 @@ func Update(req UpdateRequest, stream []Event) Event {
 		return newErrorEvent(err, req.RequestID)
 	}
 
-	be := baseEvent{
-		id:      req.ID,
-		occured: time.Now(),
-		version: s.version + 1,
-		rid:     req.RequestID,
+	be := BaseEvent{
+		ID:      req.ID,
+		Occured: time.Now(),
+		V:       s.v + 1,
+		ReqID:   req.RequestID,
 	}
 
 	return Updated{be, req.Name, req.Description}
 }
 
-type Updated struct {
-	baseEvent
-	Name        string
-	Description string
-}
-
-func (e Updated) Kind() string {
-	return "bucket.Updated"
-}
-
-func newErrorEvent(err error, rid string) Event {
-	be := baseEvent{
-		occured: time.Now(),
-		rid:     rid,
-	}
-	return ErrorEvent{be, err}
-}
-
 type ErrorEvent struct {
-	baseEvent
-	err error
+	BaseEvent
+	Err *errors.Error
 }
 
-func (ee ErrorEvent) Kind() string {
+func (ee ErrorEvent) Type() string {
 	return "bucket.ErrorEvent"
 }
 
-func (ee ErrorEvent) Error() error {
-	return ee.err
+func (ee ErrorEvent) Error() string {
+	return ee.Err.Error()
 }
 
-type baseEvent struct {
-	id      BucketID
-	occured time.Time
-	version uint
-	rid     string
-}
+func newErrorEvent(err *errors.Error, rid string) Event {
 
-func (be baseEvent) ID() string {
-	return be.id.String()
-}
-
-func (be baseEvent) OccuredAt() time.Time {
-	return be.occured
-}
-
-func (be baseEvent) Version() uint {
-	return be.version
-}
-
-func (be baseEvent) RequestID() string {
-	return be.rid
+	be := BaseEvent{
+		Occured: time.Now(),
+		ReqID:   rid,
+	}
+	return ErrorEvent{be, err}
 }

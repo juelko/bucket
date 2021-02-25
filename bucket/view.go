@@ -2,17 +2,20 @@ package bucket
 
 import "time"
 
-func NewView(stream []Event) View {
-	s := newState(stream)
+func NewView(id string, stream []Event) (View, error) {
+	s, err := newState(id, stream)
+	if err != nil {
+		return View{}, err
+	}
 
 	return View{
-		ID:          s.id.String(),
+		ID:          s.id,
 		Name:        s.name,
 		Description: s.description,
-		Version:     s.version,
+		Version:     s.v,
 		IsClosed:    s.closed,
 		LastUpdate:  s.updated,
-	}
+	}, nil
 }
 
 type View struct {
