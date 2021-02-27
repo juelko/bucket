@@ -1,95 +1,95 @@
 package bucket
 
 import (
-	stderr "errors"
 	"time"
 
 	"github.com/juelko/bucket/pkg/errors"
 )
 
-var (
-	ErrBucketIsClosed error = stderr.New("Bucket is closed")
-)
-
 type Event interface {
-	StreamID() string
+	StreamID() ID
 	Type() string
 	OccuredAt() time.Time
-	Version() uint
-	RequestID() string
+	Version() Version
+	RequestID() RequestID
 }
 
-// BaseRequest holds common field for all requests
-type BaseRequest struct {
-	ID        string `validate:"alphanum,min=3,max=64"`
-	RequestID string `validate:"uuid4_rfc4122"`
+// NewOpenRequest takes arguments for new OpenRequest and validates them
+// If arguments are valid, *OpenRequest and nil error is returned
+// If validation of any argument fails, nil and error is returned
+func NewOpenRequest(id ID, r RequestID, n Name, d Description) (*OpenRequest, error) {
+	const op errors.Op = "bucket.NewOpenRequest"
+
+	if err := validateArgs(id, r, n); err != nil {
+		return nil, errors.New(op, errors.KindValidation, "Invalid arguments", err)
+	}
+
+	return &OpenRequest{id, r, n, d}, nil
+
 }
 
-// BaseEvent has common fields and methods to all domain events.
-// When BaseEvent is embedded, Domain Event only needs Type() method to satisfy Event interface
-type BaseEvent struct {
-	ID      string    `validate:"alphanum,min=3,max=64"`
-	Occured time.Time `validate:"required" deep:"-"`
-	ReqID   string    `validate:"uuid4_rfc4122"`
-	V       uint      `validate:"gt=0"`
-}
-
-func (be BaseEvent) StreamID() string {
-	return be.ID
-}
-
-func (be BaseEvent) Version() uint {
-	return be.V
-}
-
-func (be BaseEvent) RequestID() string {
-	return be.ReqID
-}
-
-func (be BaseEvent) OccuredAt() time.Time {
-	return be.Occured
-}
-
+// OpenRequest is holds validated arguments for Open
 type OpenRequest struct {
-	BaseRequest
-	Name        string `validate:"alphanum,min=3,max=64"`
-	Description string
+	// contains filtered or unexported fields
+	id    ID
+	rid   RequestID
+	name  Name
+	dessc Description
 }
 
 // Opened is a domain event and is emitted when bucket is opened
 type Opened struct {
-	BaseEvent
-	Name        string `validate:"alphanum,min=3,max=64"`
-	Description string
+	// contains filtered or unexported fields
+	baseEvent
+	name Name
+	desc Description
 }
 
 func (e Opened) Type() string {
 	return "bucket.Opened"
 }
 
+// Open creates Event from OpenRequest.
+// If business requirements are met, retuned event is Opened event
+// In case of any error, ErrorEvent is returned
 func Open(req *OpenRequest) Event {
-	const op errors.Op = "bucket.Open"
+	return opening(req)
+}
 
-	if err := validateStruct(req); err != nil {
-		return newErrorEvent(errors.New(op, errors.KindValidation, "Request validation failed", err), req.RequestID)
+func opening(req *OpenRequest) Event {
+	be := baseEvent{
+		id:  req.id,
+		at:  time.Now(),
+		rid: req.rid,
+		v:   1,
 	}
 
-	be := BaseEvent{
-		ID:      req.ID,
-		Occured: time.Now(),
-		ReqID:   req.RequestID,
-		V:       1,
+	return Opened{be, req.name, req.dessc}
+}
+
+// NewClosedRequest takes arguments for new CloseRequest and validates them
+// If arguments are valid, *CloseRequest and nil error is returned
+// If validation of any argument fails, nil and error is returned
+func NewClosedRequest(id ID, r RequestID) (*CloseRequest, error) {
+	const op errors.Op = "bucket.NewClosedRequest"
+
+	if err := validateArgs(id, r); err != nil {
+		return nil, errors.New(op, errors.KindValidation, "Invalid arguments", err)
 	}
 
-	return Opened{be, req.Name, req.Description}
+	return &CloseRequest{id, r}, nil
+
 }
 
 type CloseRequest struct {
-	BaseRequest
+	// contains filtered or unexported fields
+	id  ID
+	rid RequestID
 }
 
 type Closed struct {
-	BaseEvent
+	// contains filtered or unexported fields
+	baseEvent
 }
 
 func (e Closed) Type() string {
@@ -97,79 +97,91 @@ func (e Closed) Type() string {
 }
 
 func Close(req *CloseRequest, stream []Event) Event {
-	const op errors.Op = "bucket.Close"
+	return stateForClosing(req, stream)
+}
 
-	if err := validateStruct(req); err != nil {
-		return newErrorEvent(errors.New(op, errors.KindValidation, err), req.RequestID)
-	}
+func stateForClosing(req *CloseRequest, stream []Event) Event {
+	const op errors.Op = "bucket.stateForClosing"
 
-	s, err := newState(req.ID, stream)
+	s, err := buildState(req.id, stream)
 	if err != nil {
-		return newErrorEvent(errors.New(op, errors.KindUnexpected, err), req.RequestID)
+		return newErrorEvent(errors.New(op, errors.KindUnexpected, "Error when building state for closing", err), req.rid)
 	}
+
+	return closing(req, &s)
+}
+
+func closing(req *CloseRequest, s *state) Event {
+	const op errors.Op = "bucket.closing"
 
 	if s.closed {
-		err := errors.New("Closed bucket")
-		return newErrorEvent(err, req.RequestID)
+		return newErrorEvent(errors.New(op, errors.KindExpected, "Bucket allready closed"), req.rid)
 	}
 
-	be := BaseEvent{
-		ID:      req.ID,
-		Occured: time.Now(),
-		V:       s.v + 1,
-		ReqID:   req.RequestID,
+	be := baseEvent{
+		id:  req.id,
+		at:  time.Now(),
+		v:   s.v + 1,
+		rid: req.rid,
 	}
 
 	return Closed{be}
-
 }
 
 type UpdateRequest struct {
-	BaseRequest
-	Name        string `validate:"alphanum,min=3,max=64"`
-	Description string
+	// contains filtered or unexported fields
+	id   ID
+	rid  RequestID
+	name Name
+	desc Description
 }
-
 type Updated struct {
-	BaseEvent
-	Name        string
-	Description string
+	// contains filtered or unexported fields
+	baseEvent
+	name Name
+	desc Description
 }
 
 func (e Updated) Type() string {
 	return "bucket.Updated"
 }
 
-func Update(req UpdateRequest, stream []Event) Event {
-	const op errors.Op = "bucket.Update"
+func Update(req *UpdateRequest, stream []Event) Event {
+	return stateForUpdating(req, stream)
+}
 
-	if err := validate.Struct(req); err != nil {
-		return newErrorEvent(errors.New(op, errors.KindValidation, err), req.RequestID)
-	}
+func stateForUpdating(req *UpdateRequest, stream []Event) Event {
+	const op errors.Op = "bucket.stateForUpdating"
 
-	s, err := newState(req.ID, stream)
+	s, err := buildState(req.id, stream)
 	if err != nil {
-		return newErrorEvent(errors.New(op, errors.KindUnexpected, err), req.RequestID)
+		return newErrorEvent(errors.New(op, errors.KindUnexpected, "Error when building state for update", err), req.rid)
 	}
+
+	return updating(req, &s)
+}
+
+func updating(req *UpdateRequest, s *state) Event {
+	const op errors.Op = "bucket.updating"
 
 	if s.closed {
-		err := errors.New("Closed bucket")
-		return newErrorEvent(err, req.RequestID)
+		return newErrorEvent(errors.New(op, errors.KindExpected, "Bucket is closed"), req.rid)
 	}
 
-	be := BaseEvent{
-		ID:      req.ID,
-		Occured: time.Now(),
-		V:       s.v + 1,
-		ReqID:   req.RequestID,
+	be := baseEvent{
+		id:  req.id,
+		at:  time.Now(),
+		v:   s.v + 1,
+		rid: req.rid,
 	}
 
-	return Updated{be, req.Name, req.Description}
+	return Updated{be, req.name, req.desc}
 }
 
 type ErrorEvent struct {
-	BaseEvent
-	Err *errors.Error
+	// contains filtered or unexported fields
+	baseEvent
+	err *errors.Error
 }
 
 func (ee ErrorEvent) Type() string {
@@ -177,14 +189,39 @@ func (ee ErrorEvent) Type() string {
 }
 
 func (ee ErrorEvent) Error() string {
-	return ee.Err.Error()
+	return ee.err.Error()
 }
 
-func newErrorEvent(err *errors.Error, rid string) Event {
+func newErrorEvent(err *errors.Error, rid RequestID) Event {
 
-	be := BaseEvent{
-		Occured: time.Now(),
-		ReqID:   rid,
+	be := baseEvent{
+		at:  time.Now(),
+		rid: rid,
 	}
 	return ErrorEvent{be, err}
+}
+
+// baseEvent has common fields and methods to all domain events.
+// When baseEvent is embedded, Domain Event only needs Type() method to satisfy Event interface
+type baseEvent struct {
+	id  ID
+	at  time.Time
+	rid RequestID
+	v   Version
+}
+
+func (be baseEvent) StreamID() ID {
+	return be.id
+}
+
+func (be baseEvent) Version() Version {
+	return be.v
+}
+
+func (be baseEvent) RequestID() RequestID {
+	return be.rid
+}
+
+func (be baseEvent) OccuredAt() time.Time {
+	return be.at
 }

@@ -7,10 +7,10 @@ import (
 
 type Kind int
 
-var kindStrings = []string{"Unkwown", "Unexpected", "Expected", "Validation", "Not Found"}
+var kindStrings = []string{"Unknown", "Unexpected", "Expected", "Validation", "Not Found"}
 
 func (k Kind) String() string {
-	if k < 1 && k > 3 {
+	if k < 1 || k > 4 {
 		return kindStrings[0]
 	}
 	return kindStrings[k]
@@ -54,19 +54,18 @@ func (e Error) Error() string {
 // If wrapped errors are Errors type it compares those recursively
 // other wrapped errors are not compared
 func (e *Error) Equal(t *Error) bool {
-	ret := false
 
-	ret = e.Op == t.Op
-	ret = e.Kind == t.Kind
-	ret = e.Msg == t.Msg
+	if e.Op != t.Op || e.Kind != t.Kind || e.Msg != t.Msg {
+		return false
+	}
 
 	if wrapped, ok := e.Wraps.(*Error); ok {
 		if twrapped, ok := t.Wraps.(*Error); ok {
-			wrapped.Equal(twrapped)
+			return wrapped.Equal(twrapped)
 		}
 	}
 
-	return ret
+	return true
 
 }
 

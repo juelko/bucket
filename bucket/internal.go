@@ -3,45 +3,40 @@ package bucket
 import (
 	"fmt"
 	"time"
-
-	"github.com/juelko/bucket/pkg/errors"
-
-	validator "github.com/go-playground/validator/v10"
 )
 
-func newState(id string, stream []Event) (state, error) {
+func buildState(id ID, stream []Event) (state, error) {
 
 	ret := state{}
 
 	if len(stream) == 0 {
-		return ret, errors.New("Empty stream")
-
+		return ret, fmt.Errorf("Empty stream")
 	}
 
 	for _, e := range stream {
 
 		if id != e.StreamID() {
-			return state{}, errors.New("ID Mismatch")
+			return state{}, fmt.Errorf("ID Mismatch")
 		}
 
 		switch event := e.(type) {
 		case Opened:
-			ret.id = event.ID
-			ret.name = event.Name
-			ret.description = event.Description
-			ret.v = event.V
-			ret.updated = event.Occured
+			ret.id = event.id
+			ret.name = event.name
+			ret.desc = event.desc
+			ret.v = event.v
+			ret.last = event.at
 		case Updated:
-			ret.name = event.Name
-			ret.description = event.Description
-			ret.v = event.V
-			ret.updated = event.Occured
+			ret.name = event.name
+			ret.desc = event.desc
+			ret.v = event.v
+			ret.last = event.at
 		case Closed:
 			ret.closed = true
-			ret.v = event.V
-			ret.updated = event.Occured
+			ret.v = event.v
+			ret.last = event.at
 		default:
-			return state{}, errors.New("Stream contains unkown events")
+			return state{}, fmt.Errorf("Stream contains unkown events")
 		}
 	}
 
@@ -49,32 +44,31 @@ func newState(id string, stream []Event) (state, error) {
 }
 
 type state struct {
-	id          string
-	name        string
-	description string
-	closed      bool
-	updated     time.Time
-	v           uint
+	id     ID
+	name   Name
+	desc   Description
+	closed bool
+	last   time.Time
+	v      Version
 }
 
 // Single instance of Validate, because it caches struct info
-var validate = validator.New()
+/* var validate = validator.New()
 
 func validateStruct(i interface{}) error {
-	const op errors.Op = "bucket.validateStruct"
 
 	err := validate.Struct(i)
 
 	if err != nil {
-		var ret error
+		var b strings.Builder
 
 		for _, err := range err.(validator.ValidationErrors) {
-			msg := fmt.Sprintf("Invalid value: %v for Field: %s", err.Value(), err.Field())
-			ret = errors.New(op, errors.KindValidation, msg, ret)
+			fmt.Fprintf(&b, "Invalid value: %v for Field: %s", err.Value(), err.Field())
 		}
 
-		return ret
+		return fmt.Errorf("%s", b.String())
 	}
 
 	return nil
 }
+*/
