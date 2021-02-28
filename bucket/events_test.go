@@ -22,10 +22,8 @@ func TestOpen(t *testing.T) {
 		{
 			desc: "happy",
 			args: &OpenRequest{
-				baseRequest: baseRequest{
-					id:  "TestBucket",
-					rid: testReqID(),
-				},
+				id:    "TestBucket",
+				rid:   testReqID(),
 				name:  "TestName",
 				dessc: "Test Descritption",
 			},
@@ -42,10 +40,8 @@ func TestOpen(t *testing.T) {
 		{
 			desc: "Invalid name",
 			args: &OpenRequest{
-				baseRequest: baseRequest{
-					id:  "TestBucket",
-					rid: testReqID(),
-				},
+				id:    "TestBucket",
+				rid:   testReqID(),
 				name:  "Invalid-Name",
 				dessc: "Test Descritption",
 			},
@@ -108,10 +104,8 @@ func TestUpdate(t *testing.T) {
 		{
 			desc: "happy",
 			req: &UpdateRequest{
-				baseRequest: baseRequest{
-					id:  "TestBucket",
-					rid: testReqID(),
-				},
+				id:   "TestBucket",
+				rid:  testReqID(),
 				name: "NewName",
 				desc: "New Descritption",
 			},
@@ -129,10 +123,8 @@ func TestUpdate(t *testing.T) {
 		{
 			desc: "invalid new name",
 			req: &UpdateRequest{
-				baseRequest: baseRequest{
-					id:  "TestBucket",
-					rid: testReqID(),
-				},
+				id:   "TestBucket",
+				rid:  testReqID(),
 				name: "Invalid-New-Name",
 				desc: "New Descritption",
 			},
@@ -152,10 +144,8 @@ func TestUpdate(t *testing.T) {
 		{
 			desc: "closed stream",
 			req: &UpdateRequest{
-				baseRequest: baseRequest{
-					id:  "TestBucket",
-					rid: testReqID(),
-				},
+				id:   "TestBucket",
+				rid:  testReqID(),
 				name: "NewName",
 				desc: "New Descritption",
 			},
@@ -175,10 +165,8 @@ func TestUpdate(t *testing.T) {
 		{
 			desc: "wrong stream",
 			req: &UpdateRequest{
-				baseRequest: baseRequest{
-					id:  "TestBucket",
-					rid: testReqID(),
-				},
+				id:   "TestBucket",
+				rid:  testReqID(),
 				name: "NewName",
 				desc: "New Descritption",
 			},
@@ -198,10 +186,8 @@ func TestUpdate(t *testing.T) {
 		{
 			desc: "empty stream",
 			req: &UpdateRequest{
-				baseRequest: baseRequest{
-					id:  "TestBucket",
-					rid: testReqID(),
-				},
+				id:   "TestBucket",
+				rid:  testReqID(),
 				name: "NewName",
 				desc: "New Descritption",
 			},
@@ -265,12 +251,10 @@ func TestClose(t *testing.T) {
 		{
 			desc: "happy",
 			req: &CloseRequest{
-				baseRequest: baseRequest{
-					id:  "TestBucket",
-					rid: testReqID(),
-				},
+				id:  "TestBucket",
+				rid: testReqID(),
 			},
-			stream: openTestStream("TestBucket"),
+			stream: openTestStream(ID("TestBucket")),
 			want: Closed{
 				baseEvent: baseEvent{
 					id:  "TestBucket",
@@ -282,12 +266,10 @@ func TestClose(t *testing.T) {
 		{
 			desc: "closed stream",
 			req: &CloseRequest{
-				baseRequest: baseRequest{
-					id:  "TestBucket",
-					rid: testReqID(),
-				},
+				id:  "TestBucket",
+				rid: testReqID(),
 			},
-			stream: closedTestStream("TestBucket"),
+			stream: closedTestStream(ID("TestBucket")),
 			want: ErrorEvent{
 				baseEvent: baseEvent{
 					rid: testReqID(),
@@ -303,18 +285,16 @@ func TestClose(t *testing.T) {
 		{
 			desc: "wrong stream",
 			req: &CloseRequest{
-				baseRequest: baseRequest{
-					id:  "TestBucket",
-					rid: testReqID(),
-				},
+				id:  "TestBucket",
+				rid: testReqID(),
 			},
-			stream: closedTestStream("AnotherBucket"),
+			stream: closedTestStream(ID("AnotherBucket")),
 			want: ErrorEvent{
 				baseEvent: baseEvent{
 					rid: testReqID(),
 				},
 				err: &errors.Error{
-					Op:    "bucket.buildStateForClose",
+					Op:    "bucket.stateForClosing",
 					Kind:  errors.KindUnexpected,
 					Msg:   "Error when building state for closing",
 					Wraps: fmt.Errorf("ID Mismatch"),
@@ -324,10 +304,8 @@ func TestClose(t *testing.T) {
 		{
 			desc: "empty stream",
 			req: &CloseRequest{
-				baseRequest: baseRequest{
-					id:  "TestBucket",
-					rid: testReqID(),
-				},
+				id:  "TestBucket",
+				rid: testReqID(),
 			},
 			stream: []Event{},
 			want: ErrorEvent{
@@ -335,31 +313,10 @@ func TestClose(t *testing.T) {
 					rid: testReqID(),
 				},
 				err: &errors.Error{
-					Op:    "bucket.buildStateForClose",
+					Op:    "bucket.stateForClosing",
 					Kind:  errors.KindUnexpected,
 					Msg:   "Error when building state for closing",
 					Wraps: fmt.Errorf("Empty stream"),
-				},
-			},
-		},
-		{
-			desc: "Invalid ID",
-			req: &CloseRequest{
-				baseRequest: baseRequest{
-					id:  "Invalid-Bucket-ID",
-					rid: testReqID(),
-				},
-			},
-			stream: closedTestStream("TestBucket"),
-			want: ErrorEvent{
-				baseEvent: baseEvent{
-					rid: testReqID(),
-				},
-				err: &errors.Error{
-					Op:    "bucket.validateCloseRequest",
-					Kind:  errors.KindValidation,
-					Msg:   "Request validation failed",
-					Wraps: fmt.Errorf("Invalid value: Invalid-Bucket-ID for Field: ID"),
 				},
 			},
 		},
@@ -396,7 +353,7 @@ func TestClose(t *testing.T) {
 	}
 }
 
-func openTestStream(id string) []Event {
+func openTestStream(id ID) []Event {
 	return []Event{
 		Opened{
 			baseEvent: baseEvent{
@@ -410,7 +367,7 @@ func openTestStream(id string) []Event {
 	}
 }
 
-func closedTestStream(id string) []Event {
+func closedTestStream(id ID) []Event {
 	return []Event{
 		Opened{
 			baseEvent: baseEvent{
@@ -431,6 +388,6 @@ func closedTestStream(id string) []Event {
 	}
 }
 
-func testReqID() string {
-	return "3a1fc79b-dc53-4f84-a007-4df6f3e54b5f"
+func testReqID() RequestID {
+	return RequestID("3a1fc79b-dc53-4f84-a007-4df6f3e54b5f")
 }

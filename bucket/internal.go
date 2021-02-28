@@ -51,24 +51,3 @@ type state struct {
 	last   time.Time
 	v      Version
 }
-
-// Single instance of Validate, because it caches struct info
-/* var validate = validator.New()
-
-func validateStruct(i interface{}) error {
-
-	err := validate.Struct(i)
-
-	if err != nil {
-		var b strings.Builder
-
-		for _, err := range err.(validator.ValidationErrors) {
-			fmt.Fprintf(&b, "Invalid value: %v for Field: %s", err.Value(), err.Field())
-		}
-
-		return fmt.Errorf("%s", b.String())
-	}
-
-	return nil
-}
-*/
