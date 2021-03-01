@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/juelko/bucket/pkg/errors"
+	"github.com/juelko/bucket/pkg/request"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,7 +17,6 @@ func TestNewOpenRequest(t *testing.T) {
 
 	type args struct {
 		id   ID
-		rid  RequestID
 		name Name
 		desc Description
 	}
@@ -29,13 +29,13 @@ func TestNewOpenRequest(t *testing.T) {
 	}{
 		{
 			desc: "success",
-			args: args{ID("success"), testReqID(), Name("success"), Description("success")},
-			want: &OpenRequest{ID("success"), testReqID(), Name("success"), Description("success")},
+			args: args{ID("success"), Name("success"), Description("success")},
+			want: &OpenRequest{ID("success"), Name("success"), Description("success")},
 			err:  nil,
 		},
 		{
 			desc: "invalid name",
-			args: args{ID("success"), testReqID(), Name("invalid-name"), Description("success")},
+			args: args{ID("success"), Name("invalid-name"), Description("success")},
 			want: nil,
 			err: &errors.Error{
 				Op:    "bucket.NewOpenRequest",
@@ -49,7 +49,7 @@ func TestNewOpenRequest(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := NewOpenRequest(tC.args.id, tC.args.rid, tC.args.name, tC.args.desc)
+			got, err := NewOpenRequest(tC.args.id, tC.args.name, tC.args.desc)
 
 			assert.Equal(t, tC.want, got, "Request should be equal")
 			assert.Equal(t, tC.err, err, "error should be equal")
@@ -69,16 +69,14 @@ func TestOpen(t *testing.T) {
 		{
 			desc: "happy",
 			args: &OpenRequest{
-				id:    "TestBucket",
-				rid:   testReqID(),
-				name:  "TestName",
-				dessc: "Test Descritption",
+				id:   "TestBucket",
+				name: "TestName",
+				desc: "Test Descritption",
 			},
-			want: Opened{
+			want: &Opened{
 				baseEvent: baseEvent{
-					id:  "TestBucket",
-					rid: testReqID(),
-					v:   1,
+					id: "TestBucket",
+					v:  1,
 				},
 				name: "TestName",
 				desc: "Test Descritption",
@@ -97,18 +95,17 @@ func TestOpen(t *testing.T) {
 			got := Open(tC.args)
 
 			require.Equal(t, tC.want.Type(), got.Type())
-			assert.Equal(t, tC.want.RequestID(), got.RequestID())
 			assert.True(t, got.OccuredAt().After(begin))
 
 			switch want := tC.want.(type) {
-			case Opened:
-				e := got.(Opened)
+			case *Opened:
+				e := got.(*Opened)
 				assert.Equal(t, want.StreamID(), e.StreamID())
 				assert.Equal(t, want.Version(), e.Version())
-				assert.Equal(t, want.name, e.name)
-				assert.Equal(t, want.desc, e.desc)
-			case ErrorEvent:
-				e := got.(ErrorEvent)
+				assert.Equal(t, want.Name(), e.Name())
+				assert.Equal(t, want.Description(), e.Description())
+			case *ErrorEvent:
+				e := got.(*ErrorEvent)
 				assert.Zero(t, e.StreamID(), "ID should be Zero value")
 				assert.Zero(t, e.Version(), "Version should be Zero value")
 				assert.Equal(t, want.Error(), e.Error(), "Errors should be equal")
@@ -124,7 +121,6 @@ func TestNewUpdateRequest(t *testing.T) {
 
 	type args struct {
 		id   ID
-		rid  RequestID
 		name Name
 		desc Description
 	}
@@ -137,13 +133,13 @@ func TestNewUpdateRequest(t *testing.T) {
 	}{
 		{
 			desc: "success",
-			args: args{ID("success"), testReqID(), Name("success"), Description("success")},
-			want: &UpdateRequest{ID("success"), testReqID(), Name("success"), Description("success")},
+			args: args{ID("success"), Name("success"), Description("success")},
+			want: &UpdateRequest{ID("success"), Name("success"), Description("success")},
 			err:  nil,
 		},
 		{
 			desc: "invalid name",
-			args: args{ID("success"), testReqID(), Name("invalid-name"), Description("success")},
+			args: args{ID("success"), Name("invalid-name"), Description("success")},
 			want: nil,
 			err: &errors.Error{
 				Op:    "bucket.NewUpdateRequest",
@@ -157,7 +153,7 @@ func TestNewUpdateRequest(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := NewUpdateRequest(tC.args.id, tC.args.rid, tC.args.name, tC.args.desc)
+			got, err := NewUpdateRequest(tC.args.id, tC.args.name, tC.args.desc)
 
 			assert.Equal(t, tC.want, got, "Request should be equal")
 			assert.Equal(t, tC.err, err, "error should be equal")
@@ -179,16 +175,14 @@ func TestUpdate(t *testing.T) {
 			desc: "happy",
 			req: &UpdateRequest{
 				id:   "TestBucket",
-				rid:  testReqID(),
 				name: "NewName",
 				desc: "New Descritption",
 			},
 			stream: openTestStream("TestBucket"),
-			want: Updated{
+			want: &Updated{
 				baseEvent: baseEvent{
-					id:  "TestBucket",
-					rid: testReqID(),
-					v:   2,
+					id: "TestBucket",
+					v:  2,
 				},
 				name: "NewName",
 				desc: "New Descritption",
@@ -198,15 +192,12 @@ func TestUpdate(t *testing.T) {
 			desc: "closed stream",
 			req: &UpdateRequest{
 				id:   "TestBucket",
-				rid:  testReqID(),
 				name: "NewName",
 				desc: "New Descritption",
 			},
 			stream: closedTestStream("TestBucket"),
-			want: ErrorEvent{
-				baseEvent: baseEvent{
-					rid: testReqID(),
-				},
+			want: &ErrorEvent{
+				baseEvent: baseEvent{},
 				err: &errors.Error{
 					Op:    "bucket.updating",
 					Kind:  errors.KindExpected,
@@ -219,15 +210,12 @@ func TestUpdate(t *testing.T) {
 			desc: "wrong stream",
 			req: &UpdateRequest{
 				id:   "TestBucket",
-				rid:  testReqID(),
 				name: "NewName",
 				desc: "New Descritption",
 			},
 			stream: closedTestStream("AnotherBucket"),
-			want: ErrorEvent{
-				baseEvent: baseEvent{
-					rid: testReqID(),
-				},
+			want: &ErrorEvent{
+				baseEvent: baseEvent{},
 				err: &errors.Error{
 					Op:    "bucket.stateForUpdating",
 					Kind:  errors.KindUnexpected,
@@ -240,15 +228,12 @@ func TestUpdate(t *testing.T) {
 			desc: "empty stream",
 			req: &UpdateRequest{
 				id:   "TestBucket",
-				rid:  testReqID(),
 				name: "NewName",
 				desc: "New Descritption",
 			},
 			stream: []Event{},
-			want: ErrorEvent{
-				baseEvent: baseEvent{
-					rid: testReqID(),
-				},
+			want: &ErrorEvent{
+				baseEvent: baseEvent{},
 				err: &errors.Error{
 					Op:    "bucket.stateForUpdating",
 					Kind:  errors.KindUnexpected,
@@ -270,18 +255,17 @@ func TestUpdate(t *testing.T) {
 			got := Update(tC.req, tC.stream)
 
 			require.Equal(t, tC.want.Type(), got.Type())
-			assert.Equal(t, tC.want.RequestID(), got.RequestID())
 			assert.True(t, got.OccuredAt().After(begin))
 
 			switch want := tC.want.(type) {
-			case Updated:
-				e := got.(Updated)
+			case *Updated:
+				e := got.(*Updated)
 				assert.Equal(t, want.StreamID(), e.StreamID())
 				assert.Equal(t, want.Version(), e.Version())
-				assert.Equal(t, want.name, e.name)
-				assert.Equal(t, want.desc, e.desc)
-			case ErrorEvent:
-				e := got.(ErrorEvent)
+				assert.Equal(t, want.Name(), e.Name())
+				assert.Equal(t, want.Description(), e.Description())
+			case *ErrorEvent:
+				e := got.(*ErrorEvent)
 				assert.Zero(t, e.StreamID(), "ID should be Zero value")
 				assert.Zero(t, e.Version(), "Version should be Zero value")
 				assert.Equal(t, want.Error(), e.Error(), "Errors should be equal")
@@ -297,7 +281,7 @@ func TestNewCloseRequest(t *testing.T) {
 
 	type args struct {
 		id  ID
-		rid RequestID
+		rid request.ID
 	}
 
 	testCases := []struct {
@@ -309,7 +293,7 @@ func TestNewCloseRequest(t *testing.T) {
 		{
 			desc: "success",
 			args: args{ID("success"), testReqID()},
-			want: &CloseRequest{ID("success"), testReqID()},
+			want: &CloseRequest{ID("success")},
 			err:  nil,
 		},
 		{
@@ -328,7 +312,7 @@ func TestNewCloseRequest(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := NewCloseRequest(tC.args.id, tC.args.rid)
+			got, err := NewCloseRequest(tC.args.id)
 
 			assert.Equal(t, tC.want, got, "Request should be equal")
 			assert.Equal(t, tC.err, err, "error should be equal")
@@ -349,29 +333,24 @@ func TestClose(t *testing.T) {
 		{
 			desc: "happy",
 			req: &CloseRequest{
-				id:  "TestBucket",
-				rid: testReqID(),
+				id: "TestBucket",
 			},
 			stream: openTestStream(ID("TestBucket")),
-			want: Closed{
+			want: &Closed{
 				baseEvent: baseEvent{
-					id:  "TestBucket",
-					rid: testReqID(),
-					v:   2,
+					id: "TestBucket",
+					v:  2,
 				},
 			},
 		},
 		{
 			desc: "closed stream",
 			req: &CloseRequest{
-				id:  "TestBucket",
-				rid: testReqID(),
+				id: "TestBucket",
 			},
 			stream: closedTestStream(ID("TestBucket")),
-			want: ErrorEvent{
-				baseEvent: baseEvent{
-					rid: testReqID(),
-				},
+			want: &ErrorEvent{
+				baseEvent: baseEvent{},
 				err: &errors.Error{
 					Op:    "bucket.closing",
 					Kind:  errors.KindExpected,
@@ -383,14 +362,11 @@ func TestClose(t *testing.T) {
 		{
 			desc: "wrong stream",
 			req: &CloseRequest{
-				id:  "TestBucket",
-				rid: testReqID(),
+				id: "TestBucket",
 			},
 			stream: closedTestStream(ID("AnotherBucket")),
-			want: ErrorEvent{
-				baseEvent: baseEvent{
-					rid: testReqID(),
-				},
+			want: &ErrorEvent{
+				baseEvent: baseEvent{},
 				err: &errors.Error{
 					Op:    "bucket.stateForClosing",
 					Kind:  errors.KindUnexpected,
@@ -400,16 +376,11 @@ func TestClose(t *testing.T) {
 			},
 		},
 		{
-			desc: "empty stream",
-			req: &CloseRequest{
-				id:  "TestBucket",
-				rid: testReqID(),
-			},
+			desc:   "empty stream",
+			req:    &CloseRequest{ID("TestBucket")},
 			stream: []Event{},
-			want: ErrorEvent{
-				baseEvent: baseEvent{
-					rid: testReqID(),
-				},
+			want: &ErrorEvent{
+				baseEvent: baseEvent{},
 				err: &errors.Error{
 					Op:    "bucket.stateForClosing",
 					Kind:  errors.KindUnexpected,
@@ -431,16 +402,15 @@ func TestClose(t *testing.T) {
 			got := Close(tC.req, tC.stream)
 
 			require.Equal(t, tC.want.Type(), got.Type())
-			assert.Equal(t, tC.want.RequestID(), got.RequestID())
 			assert.True(t, got.OccuredAt().After(begin))
 
 			switch want := tC.want.(type) {
-			case Closed:
-				e := got.(Closed)
+			case *Closed:
+				e := got.(*Closed)
 				assert.Equal(t, want.StreamID(), e.StreamID())
 				assert.Equal(t, want.Version(), e.Version())
-			case ErrorEvent:
-				e := got.(ErrorEvent)
+			case *ErrorEvent:
+				e := got.(*ErrorEvent)
 				assert.Zero(t, e.StreamID(), "ID should be Zero value")
 				assert.Zero(t, e.Version(), "Version should be Zero value")
 				assert.Equal(t, want.Error(), e.Error(), "Errors should be equal")
@@ -558,7 +528,7 @@ func TestBuildState(t *testing.T) {
 		{
 			desc:   "unkonwn event",
 			id:     ID(""),
-			stream: []Event{newErrorEvent(errors.New("for error event"), testReqID())},
+			stream: []Event{NewErrorEvent(errors.New("for error event"))},
 			want:   state{},
 			err:    fmt.Errorf("Stream contains unkown events"),
 		},
@@ -610,7 +580,7 @@ func TestIDValidation(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			t.Parallel()
 
-			got := tC.id.validate()
+			got := tC.id.Validate()
 
 			assert.Equal(t, tC.want, got)
 
@@ -651,105 +621,7 @@ func TestNameValidation(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			t.Parallel()
 
-			got := tC.id.validate()
-
-			assert.Equal(t, tC.want, got)
-
-		})
-	}
-}
-
-func TestRequestIDValidation(t *testing.T) {
-	t.Parallel()
-	testCases := []struct {
-		desc string
-		id   RequestID
-		want *errors.Error
-	}{
-		{
-			desc: "ok",
-			id:   testReqID(),
-			want: nil,
-		},
-		{
-			desc: "invalid RequestID",
-			id:   RequestID("this-in-invalid-request-id"),
-			want: &errors.Error{Op: "bucket.RequestID.validate", Kind: errors.KindValidation, Msg: "Invalid value for RequestID", Wraps: error(nil)},
-		},
-	}
-	for i := range testCases {
-		tC := testCases[i]
-		t.Run(tC.desc, func(t *testing.T) {
-			t.Parallel()
-
-			got := tC.id.validate()
-
-			assert.Equal(t, tC.want, got)
-
-			t.Log(tC.id)
-
-		})
-	}
-}
-
-func TestValidateArgs(t *testing.T) {
-	t.Parallel()
-
-	type args struct {
-		id   ID
-		rid  RequestID
-		name Name
-	}
-
-	testCases := []struct {
-		desc string
-		args args
-		want error
-	}{
-		{
-			desc: "all ok",
-			args: args{ID("TestID"), testReqID(), Name("TestName")},
-			want: nil,
-		},
-		{
-			desc: "invalid id",
-			args: args{ID("InvalidID!"), testReqID(), Name("TestName")},
-			want: &errors.Error{Op: "bucket.ID.validate", Kind: errors.KindValidation, Msg: "Invalid value for ID", Wraps: nil},
-		},
-		{
-			desc: "invalid RequestID",
-			args: args{ID("TestID"), RequestID("invalid-request-id"), Name("TestName")},
-			want: &errors.Error{Op: "bucket.RequestID.validate", Kind: errors.KindValidation, Msg: "Invalid value for RequestID", Wraps: nil},
-		},
-		{
-			desc: "invalid Name",
-			args: args{ID("TestID"), testReqID(), Name("InvalidName!")},
-			want: &errors.Error{Op: "bucket.Name.validate", Kind: errors.KindValidation, Msg: "Invalid value for Name", Wraps: nil},
-		},
-		{
-			desc: "all invalid",
-			args: args{ID("InvalidID!"), RequestID("invalid-request-id"), Name("InvalidName!")},
-			want: &errors.Error{
-				Op:   "bucket.ID.validate",
-				Kind: errors.KindValidation,
-				Msg:  "Invalid value for ID",
-				Wraps: &errors.Error{
-					Op:   "bucket.RequestID.validate",
-					Kind: errors.KindValidation,
-					Msg:  "Invalid value for RequestID",
-					Wraps: &errors.Error{
-						Op:    "bucket.Name.validate",
-						Kind:  errors.KindValidation,
-						Msg:   "Invalid value for Name",
-						Wraps: nil}}},
-		},
-	}
-	for i := range testCases {
-		tC := testCases[i]
-		t.Run(tC.desc, func(t *testing.T) {
-			t.Parallel()
-
-			got := validateArgs(tC.args.name, tC.args.rid, tC.args.id)
+			got := tC.id.Validate()
 
 			assert.Equal(t, tC.want, got)
 
@@ -761,12 +633,11 @@ func TestValidateArgs(t *testing.T) {
 func openTestStream(id ID) []Event {
 
 	return []Event{
-		Opened{
+		&Opened{
 			baseEvent: baseEvent{
-				id:  id,
-				rid: testReqID(),
-				v:   1,
-				at:  atOpened,
+				id: id,
+				v:  1,
+				at: atOpened,
 			},
 			name: "TestName",
 			desc: "Test Description",
@@ -776,22 +647,20 @@ func openTestStream(id ID) []Event {
 
 func updatedTestStream(id ID) []Event {
 	return []Event{
-		Opened{
+		&Opened{
 			baseEvent: baseEvent{
-				id:  id,
-				rid: testReqID(),
-				v:   1,
-				at:  atOpened,
+				id: id,
+				v:  1,
+				at: atOpened,
 			},
 			name: "TestName",
 			desc: "Test Description",
 		},
-		Updated{
+		&Updated{
 			baseEvent: baseEvent{
-				id:  id,
-				rid: testReqID(),
-				v:   2,
-				at:  atUpdated,
+				id: id,
+				v:  2,
+				at: atUpdated,
 			},
 			name: "UpdatedName",
 			desc: "Updated Description",
@@ -801,39 +670,36 @@ func updatedTestStream(id ID) []Event {
 
 func closedTestStream(id ID) []Event {
 	return []Event{
-		Opened{
+		&Opened{
 			baseEvent: baseEvent{
-				id:  id,
-				rid: testReqID(),
-				v:   1,
-				at:  atOpened,
+				id: id,
+				v:  1,
+				at: atOpened,
 			},
 			name: "TestName",
 			desc: "Test Description",
 		},
-		Updated{
+		&Updated{
 			baseEvent: baseEvent{
-				id:  id,
-				rid: testReqID(),
-				v:   2,
-				at:  atUpdated,
+				id: id,
+				v:  2,
+				at: atUpdated,
 			},
 			name: "ClosedName",
 			desc: "Closed Description",
 		},
-		Closed{
+		&Closed{
 			baseEvent: baseEvent{
-				id:  id,
-				rid: testReqID(),
-				v:   3,
-				at:  atClosed,
+				id: id,
+				v:  3,
+				at: atClosed,
 			},
 		},
 	}
 }
 
-func testReqID() RequestID {
-	return RequestID("10c0d59e-ca70-46d8-87fb-738be0c9b035")
+func testReqID() request.ID {
+	return request.ID("10c0d59e-ca70-46d8-87fb-738be0c9b035")
 }
 
 // helper variables for testing

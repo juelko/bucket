@@ -20,18 +20,18 @@ func buildState(id ID, stream []Event) (state, error) {
 		}
 
 		switch event := e.(type) {
-		case Opened:
+		case *Opened:
 			ret.id = event.id
 			ret.name = event.name
 			ret.desc = event.desc
 			ret.v = event.v
 			ret.last = event.at
-		case Updated:
+		case *Updated:
 			ret.name = event.name
 			ret.desc = event.desc
 			ret.v = event.v
 			ret.last = event.at
-		case Closed:
+		case *Closed:
 			ret.closed = true
 			ret.v = event.v
 			ret.last = event.at
