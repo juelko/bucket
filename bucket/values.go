@@ -9,9 +9,9 @@ import (
 // ID is the bucket's identifier
 type ID string
 
-var idRegexp = regexp.MustCompile("^[A-Za-z0-9]{3-64}$")
+var idRegexp = regexp.MustCompile("^[A-Za-z0-9]{3,64}$")
 
-func (id ID) validate() error {
+func (id ID) validate() *errors.Error {
 	const op errors.Op = "bucket.ID.validate"
 
 	if !idRegexp.Match([]byte(id)) {
@@ -21,15 +21,15 @@ func (id ID) validate() error {
 	return nil
 }
 
-// RequestID is unique identifier for each request. Format is rfc4122 uuid v4
+// RequestID is unique identifier for each request. Format is rfc4122 UUID
 type RequestID string
 
-var ridRegexp = regexp.MustCompile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$")
+var ridRegexp = regexp.MustCompile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
-func (rid RequestID) validate() error {
+func (rid RequestID) validate() *errors.Error {
 	const op errors.Op = "bucket.RequestID.validate"
 
-	if !idRegexp.Match([]byte(rid)) {
+	if !ridRegexp.Match([]byte(rid)) {
 		return errors.New(op, errors.KindValidation, "Invalid value for RequestID")
 	}
 
@@ -42,9 +42,9 @@ type Version uint
 // Name for the bucket
 type Name string
 
-var nameRegexp = regexp.MustCompile("^[A-Za-z0-9]{3-64}$")
+var nameRegexp = regexp.MustCompile("^[A-Za-z0-9]{3,64}$")
 
-func (n Name) validate() error {
+func (n Name) validate() *errors.Error {
 	const op errors.Op = "bucket.Name.validate"
 
 	if !idRegexp.Match([]byte(n)) {
@@ -57,14 +57,17 @@ func (n Name) validate() error {
 type Description string
 
 type validator interface {
-	validate() error
+	validate() *errors.Error
 }
 
 func validateArgs(args ...validator) error {
 	var ret error
 
 	for _, arg := range args {
-		ret = arg.validate()
+		if err := arg.validate(); err != nil {
+			err.Wraps = ret
+			ret = err
+		}
 	}
 
 	return ret

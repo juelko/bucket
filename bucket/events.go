@@ -67,11 +67,11 @@ func opening(req *OpenRequest) Event {
 	return Opened{be, req.name, req.dessc}
 }
 
-// NewClosedRequest takes arguments for new CloseRequest and validates them
+// NewCloseRequest takes arguments for new CloseRequest and validates them
 // If arguments are valid, *CloseRequest and nil error is returned
 // If validation of any argument fails, nil and error is returned
-func NewClosedRequest(id ID, r RequestID) (*CloseRequest, error) {
-	const op errors.Op = "bucket.NewClosedRequest"
+func NewCloseRequest(id ID, r RequestID) (*CloseRequest, error) {
+	const op errors.Op = "bucket.NewCloseRequest"
 
 	if err := validateArgs(id, r); err != nil {
 		return nil, errors.New(op, errors.KindValidation, "Invalid arguments", err)
@@ -126,6 +126,17 @@ func closing(req *CloseRequest, s *state) Event {
 	}
 
 	return Closed{be}
+}
+
+func NewUpdateRequest(id ID, r RequestID, n Name, d Description) (*UpdateRequest, error) {
+	const op errors.Op = "bucket.NewUpdateRequest"
+
+	if err := validateArgs(id, r, n); err != nil {
+		return nil, errors.New(op, errors.KindValidation, "Invalid arguments", err)
+	}
+
+	return &UpdateRequest{id, r, n, d}, nil
+
 }
 
 type UpdateRequest struct {
