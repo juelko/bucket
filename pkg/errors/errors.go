@@ -21,6 +21,7 @@ const (
 	KindExpected
 	KindValidation
 	KindNotFound
+	KindAllreadyExists
 )
 
 type Op string

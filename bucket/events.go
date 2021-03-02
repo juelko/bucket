@@ -1,243 +1,228 @@
 package bucket
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/juelko/bucket/pkg/errors"
-	"github.com/juelko/bucket/pkg/validator"
+	"github.com/juelko/bucket/pkg/events"
+	"github.com/juelko/bucket/pkg/request"
 )
-
-type Event interface {
-	StreamID() ID
-	Type() string
-	OccuredAt() time.Time
-	Version() Version
-}
-
-// NewOpenRequest takes arguments for new OpenRequest and validates them
-// If arguments are valid, *OpenRequest and nil error is returned
-// If validation of any argument fails, nil and error is returned
-func NewOpenRequest(id ID, n Name, d Description) (*OpenRequest, error) {
-	const op errors.Op = "bucket.NewOpenRequest"
-
-	if err := validator.Validate(id, n); err != nil {
-		return nil, errors.New(op, errors.KindValidation, "Invalid arguments", err)
-	}
-
-	return &OpenRequest{id, n, d}, nil
-
-}
-
-// OpenRequest is holds validated arguments for Open
-type OpenRequest struct {
-	// contains filtered or unexported fields
-	id   ID
-	name Name
-	desc Description
-}
 
 // Opened is a domain event and is emitted when bucket is opened
 type Opened struct {
-	// contains filtered or unexported fields
-	baseEvent
-	name Name
-	desc Description
+	events.Base `json:"-"`  // Base event
+	Title       Title       `json:"title"` // bucket title
+	Desc        Description `json:"desc"`  // bucket description
 }
 
 func (e *Opened) Type() string {
 	return "bucket.Opened"
 }
 
-func (e *Opened) Name() Name {
-	return e.name
-}
-
-func (e *Opened) Description() Description {
-	return e.desc
-}
-
-// Open creates Event from OpenRequest.
-// If business requirements are met, retuned event is Opened event
-// In case of any error, ErrorEvent is returned
-func Open(req *OpenRequest) Event {
-	return opening(req)
-}
-
-func opening(req *OpenRequest) Event {
-	be := baseEvent{
-		id: req.id,
-		at: time.Now(),
-		v:  1,
-	}
-
-	return &Opened{be, req.name, req.desc}
-}
-
-// NewCloseRequest takes arguments for new CloseRequest and validates them
-// If arguments are valid, *CloseRequest and nil error is returned
-// If validation of any argument fails, nil and error is returned
-func NewCloseRequest(id ID) (*CloseRequest, error) {
-	const op errors.Op = "bucket.NewCloseRequest"
-
-	if err := validator.Validate(id); err != nil {
-		return nil, errors.New(op, errors.KindValidation, "Invalid arguments", err)
-	}
-
-	return &CloseRequest{id}, nil
-
-}
-
-type CloseRequest struct {
-	// contains filtered or unexported fields
-	id ID
-}
-
-type Closed struct {
-	// contains filtered or unexported fields
-	baseEvent
-}
-
-func (e *Closed) Type() string {
-	return "bucket.Closed"
-}
-
-func Close(req *CloseRequest, stream []Event) Event {
-	return stateForClosing(req, stream)
-}
-
-func stateForClosing(req *CloseRequest, stream []Event) Event {
-	const op errors.Op = "bucket.stateForClosing"
-
-	s, err := buildState(req.id, stream)
+func (e *Opened) Payload() []byte {
+	d, err := json.Marshal(e)
 	if err != nil {
-		return NewErrorEvent(errors.New(op, errors.KindUnexpected, "Error when building state for closing", err))
+		panic(err)
 	}
 
-	return closing(req, &s)
+	return d
 }
 
-func closing(req *CloseRequest, s *state) Event {
-	const op errors.Op = "bucket.closing"
+// Use only when decoding serialized events from store
+func BuildOpened(id events.StreamID, rid request.ID, at time.Time, v events.Version, t Title, d Description) *Opened {
+	return &Opened{events.Base{ID: id, RID: rid, At: at, V: v}, t, d}
+}
 
-	if s.closed {
-		return NewErrorEvent(errors.New(op, errors.KindExpected, "Bucket allready closed"))
+// Business logic for opening
+func open(req *OpenRequest) events.Event {
+	return newOpened(req)
+}
+
+func newOpened(req *OpenRequest) events.Event {
+	be := events.Base{
+		ID:  req.ID,
+		RID: req.RID,
+		At:  time.Now(),
+		V:   1,
 	}
 
-	be := baseEvent{
-		id: req.id,
-		at: time.Now(),
-		v:  s.v + 1,
-	}
-
-	return &Closed{be}
+	return &Opened{be, req.Title, req.Desc}
 }
 
-func NewUpdateRequest(id ID, n Name, d Description) (*UpdateRequest, error) {
-	const op errors.Op = "bucket.NewUpdateRequest"
-
-	if err := validator.Validate(id, n); err != nil {
-		return nil, errors.New(op, errors.KindValidation, "Invalid arguments", err)
-	}
-
-	return &UpdateRequest{id, n, d}, nil
-
-}
-
-type UpdateRequest struct {
-	// contains filtered or unexported fields
-	id   ID
-	name Name
-	desc Description
-}
-
+// Updated is a domain event and is emitted when bucket is updated
 type Updated struct {
-	// contains filtered or unexported fields
-	baseEvent
-	name Name
-	desc Description
+	events.Base `json:"-"`  // Base event
+	Title       Title       `json:"title"` // new bucket title
+	Desc        Description `json:"desc"`  // new bucket description
 }
 
 func (e *Updated) Type() string {
 	return "bucket.Updated"
 }
 
-func (e *Updated) Name() Name {
-	return e.name
+func (e *Updated) Payload() []byte {
+
+	d, err := json.Marshal(e)
+	if err != nil {
+		panic(err)
+	}
+
+	return d
 }
 
-func (e *Updated) Description() Description {
-	return e.desc
+// Use only when decoding serialized events from store
+func BuildUpdated(id events.StreamID, rid request.ID, at time.Time, v events.Version, t Title, d Description) *Updated {
+	return &Updated{events.Base{ID: id, RID: rid, At: at, V: v}, t, d}
 }
 
-func Update(req *UpdateRequest, stream []Event) Event {
+// Business logic for updating
+func update(req *UpdateRequest, stream []events.Event) (events.Event, error) {
 	return stateForUpdating(req, stream)
 }
 
-func stateForUpdating(req *UpdateRequest, stream []Event) Event {
+func stateForUpdating(req *UpdateRequest, stream []events.Event) (events.Event, error) {
 	const op errors.Op = "bucket.stateForUpdating"
 
-	s, err := buildState(req.id, stream)
+	s, err := buildState(req.ID, stream)
 	if err != nil {
-		return NewErrorEvent(errors.New(op, errors.KindUnexpected, "Error when building state for update", err))
+		return nil, errors.New(op, errors.KindUnexpected, "Error when building state for update", err)
 	}
 
-	return updating(req, &s)
+	return newUpdate(req, &s)
 }
 
-func updating(req *UpdateRequest, s *state) Event {
+func newUpdate(req *UpdateRequest, s *state) (events.Event, error) {
 	const op errors.Op = "bucket.updating"
 
 	if s.closed {
-		return NewErrorEvent(errors.New(op, errors.KindExpected, "Bucket is closed"))
+		return nil, errors.New(op, errors.KindExpected, "Bucket is closed")
 	}
 
-	be := baseEvent{
-		id: req.id,
-		at: time.Now(),
-		v:  s.v + 1,
+	be := events.Base{
+		ID:  req.ID,
+		RID: req.RID,
+		At:  time.Now(),
+		V:   s.v + 1,
 	}
 
-	return &Updated{be, req.name, req.desc}
+	return &Updated{be, req.Title, req.Desc}, nil
 }
 
-type ErrorEvent struct {
-	// contains filtered or unexported fields
-	baseEvent
-	err *errors.Error
+// Closed is a domain event and is emitted when bucket is closed
+type Closed struct {
+	events.Base `json:"-"` // Base event
+	IsClosed    bool       `json:"isClosed"`
 }
 
-func (ee *ErrorEvent) Type() string {
-	return "bucket.ErrorEvent"
+func (e *Closed) Type() string {
+	return "bucket.Closed"
 }
 
-func (ee *ErrorEvent) Error() string {
-	return ee.err.Error()
-}
+func (e *Closed) Payload() []byte {
 
-func NewErrorEvent(err *errors.Error) Event {
-
-	be := baseEvent{
-		at: time.Now(),
+	d, err := json.Marshal(e)
+	if err != nil {
+		panic(err)
 	}
-	return &ErrorEvent{be, err}
+
+	return d
 }
 
-// baseEvent has common fields and methods to all domain events.
-// When baseEvent is embedded, Domain Event only needs Type() method to satisfy Event interface
-type baseEvent struct {
-	id ID
-	at time.Time
-	v  Version
+// Business logic for closing
+func close(req *CloseRequest, stream []events.Event) (events.Event, error) {
+	return stateForClosing(req, stream)
 }
 
-func (be baseEvent) StreamID() ID {
-	return be.id
+func stateForClosing(req *CloseRequest, stream []events.Event) (events.Event, error) {
+	const op errors.Op = "bucket.stateForClosing"
+
+	s, err := buildState(req.ID, stream)
+	if err != nil {
+		return nil, errors.New(op, errors.KindUnexpected, "Error when building state for closing", err)
+	}
+
+	return newClosed(req, &s)
 }
 
-func (be baseEvent) Version() Version {
-	return be.v
+func newClosed(req *CloseRequest, s *state) (events.Event, error) {
+	const op errors.Op = "bucket.closing"
+
+	if s.closed {
+		return nil, errors.New(op, errors.KindExpected, "Bucket allready closed")
+	}
+
+	be := events.Base{
+		ID:  req.ID,
+		RID: req.RID,
+		At:  time.Now(),
+		V:   s.v + 1,
+	}
+
+	return &Closed{be, true}, nil
 }
 
-func (be baseEvent) OccuredAt() time.Time {
-	return be.at
+// Use only when decoding serialized events from store
+func BuildEvent(base events.Base, eventType string, payload []byte) (events.Event, error) {
+	const op errors.Op = "bucket.BuildEvent"
+
+	switch eventType {
+	case "bucket.Opened":
+		return buildOpened(base, payload)
+	case "bucket.Updated":
+		return buildUpdated(base, payload)
+	case "bucket.Closed":
+		return buildClosed(base, payload)
+	default:
+		return nil, errors.New(op, errors.KindUnexpected, "Unkown eventType")
+	}
+
+}
+
+// Use only when decoding serialized events from store
+func buildOpened(eb events.Base, payload []byte) (*Opened, error) {
+	const op errors.Op = "bucket.buildOpened"
+
+	var o Opened
+
+	err := json.Unmarshal(payload, &o)
+	if err != nil {
+		return nil, errors.New(op, errors.KindUnexpected, "could not unmarshal opened")
+	}
+
+	o.Base = eb
+
+	return &o, nil
+}
+
+// Use only when decoding serialized events from store
+func buildUpdated(eb events.Base, payload []byte) (*Updated, error) {
+	const op errors.Op = "bucket.buildUpdated"
+
+	var u Updated
+
+	err := json.Unmarshal(payload, &u)
+	if err != nil {
+		return nil, errors.New(op, errors.KindUnexpected, "could not unmarshal updated")
+	}
+
+	u.Base = eb
+
+	return &u, nil
+}
+
+// Use only when decoding serialized events from store
+func buildClosed(eb events.Base, payload []byte) (*Closed, error) {
+	const op errors.Op = "bucket.buildClosed"
+
+	var c Closed
+
+	err := json.Unmarshal(payload, &c)
+	if err != nil {
+		return nil, errors.New(op, errors.KindUnexpected, "could not unmarshal closed")
+	}
+
+	c.Base = eb
+
+	return &c, nil
 }

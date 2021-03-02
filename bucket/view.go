@@ -4,9 +4,10 @@ import (
 	"time"
 
 	"github.com/juelko/bucket/pkg/errors"
+	"github.com/juelko/bucket/pkg/events"
 )
 
-func NewView(id ID, stream []Event) (*View, error) {
+func NewView(id events.StreamID, stream []events.Event) (*View, error) {
 	const op errors.Op = "bucket.NewView"
 
 	s, err := buildState(id, stream)
@@ -16,7 +17,7 @@ func NewView(id ID, stream []Event) (*View, error) {
 
 	return &View{
 		ID:          string(s.id),
-		Name:        string(s.name),
+		Title:       string(s.title),
 		Description: string(s.desc),
 		Version:     uint(s.v),
 		IsClosed:    s.closed,
@@ -26,7 +27,7 @@ func NewView(id ID, stream []Event) (*View, error) {
 
 type View struct {
 	ID          string
-	Name        string
+	Title       string
 	Description string
 	Version     uint
 	IsClosed    bool

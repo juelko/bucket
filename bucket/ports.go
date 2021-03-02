@@ -2,17 +2,18 @@ package bucket
 
 import (
 	"context"
+
+	"github.com/juelko/bucket/pkg/events"
 )
 
 type Service interface {
 	Open(ctx context.Context, req *OpenRequest) (*View, error)
 	Update(ctx context.Context, req *UpdateRequest) (*View, error)
 	Close(ctx context.Context, req *CloseRequest) (*View, error)
-	Find(ctx context.Context, id ID) (*View, error)
+	Get(ctx context.Context, id events.StreamID) (*View, error)
 }
 
 type Store interface {
-	NewStream(ctx context.Context, o Opened) error
-	GetStream(ctx context.Context, id ID) []Event
-	Insert(ctx context.Context, e Event) error
+	InsertEvent(ctx context.Context, e events.Event) error
+	GetStream(ctx context.Context, id events.StreamID) ([]events.Event, error)
 }

@@ -6,35 +6,18 @@ import (
 	"github.com/juelko/bucket/pkg/errors"
 )
 
-// ID is the bucket's identifier
-type ID string
+// Title for the bucket
+type Title string
 
-var idRegexp = regexp.MustCompile("^[A-Za-z0-9]{3,64}$")
+var titleRegexp = regexp.MustCompile(`^[\w -]{3,64}$`)
 
-func (id ID) Validate() *errors.Error {
-	const op errors.Op = "bucket.ID.validate"
+func (t Title) Validate() *errors.Error {
+	const op errors.Op = "bucket.Title.Validate"
 
-	if !idRegexp.Match([]byte(id)) {
-		return errors.New(op, errors.KindValidation, "Invalid value for ID")
+	if !titleRegexp.Match([]byte(t)) {
+		return errors.New(op, errors.KindValidation, "Invalid value for Title")
 	}
 
-	return nil
-}
-
-// Version of the bucket object
-type Version uint
-
-// Name for the bucket
-type Name string
-
-var nameRegexp = regexp.MustCompile("^[A-Za-z0-9]{3,64}$")
-
-func (n Name) Validate() *errors.Error {
-	const op errors.Op = "bucket.Name.validate"
-
-	if !idRegexp.Match([]byte(n)) {
-		return errors.New(op, errors.KindValidation, "Invalid value for Name")
-	}
 	return nil
 }
 
