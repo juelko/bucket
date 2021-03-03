@@ -55,7 +55,6 @@ func TestOpen(t *testing.T) {
 			assert.Equal(t, want.Version(), e.Version())
 			assert.Equal(t, want.Title, e.Title)
 			assert.Equal(t, want.Desc, e.Desc)
-			assert.Equal(t, want.Payload(), e.Payload())
 		})
 	}
 }
@@ -137,7 +136,6 @@ func TestUpdate(t *testing.T) {
 				assert.Equal(t, want.Version(), e.Version())
 				assert.Equal(t, want.Title, e.Title)
 				assert.Equal(t, want.Desc, e.Desc)
-				assert.Equal(t, want.Payload(), e.Payload())
 			} else {
 				require.Nil(t, got, "require got to be nil")
 				assert.Equal(t, tC.err, err)
@@ -162,7 +160,7 @@ func TestClose(t *testing.T) {
 				ID: "TestBucket",
 			},
 			stream: openTestStream("TestBucket"),
-			want:   &Closed{events.Base{ID: "TestBucket", V: 2}, true},
+			want:   &Closed{events.Base{ID: "TestBucket", V: 2}},
 		},
 		{
 			desc:   "closed stream",
@@ -207,7 +205,6 @@ func TestClose(t *testing.T) {
 				assert.True(t, e.Occured().After(begin))
 				assert.Equal(t, want.StreamID(), e.StreamID())
 				assert.Equal(t, want.Version(), e.Version())
-				assert.Equal(t, want.Payload(), e.Payload())
 			} else {
 				require.Nil(t, got, "require got to be nil")
 				assert.Equal(t, tC.err, err)
@@ -246,7 +243,7 @@ func TestNewView(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := NewView(tC.id, tC.stream)
+			got, err := NewView(tC.id, tC.stream...)
 
 			assert.Equal(t, tC.want, got)
 			assert.Equal(t, tC.err, err)
@@ -395,7 +392,7 @@ func closedTestStream(id events.StreamID) []events.Event {
 	return []events.Event{
 		&Opened{events.Base{ID: id, RID: testRID(), At: atOpened, V: 1}, "TestTitle", "Test Description"},
 		&Updated{events.Base{ID: id, RID: testRID(), At: atUpdated, V: 2}, "ClosedTitle", "Closed Description"},
-		&Closed{events.Base{ID: id, RID: testRID(), At: atClosed, V: 3}, true},
+		&Closed{events.Base{ID: id, RID: testRID(), At: atClosed, V: 3}},
 	}
 }
 

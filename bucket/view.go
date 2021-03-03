@@ -7,7 +7,7 @@ import (
 	"github.com/juelko/bucket/pkg/events"
 )
 
-func NewView(id events.StreamID, stream []events.Event) (*View, error) {
+func NewView(id events.StreamID, stream ...events.Event) (*View, error) {
 	const op errors.Op = "bucket.NewView"
 
 	s, err := buildState(id, stream)

@@ -15,7 +15,6 @@ type Event interface {
 	Occured() time.Time
 	Version() Version
 	RequestID() request.ID
-	Payload() []byte
 }
 
 func NewBase(id StreamID, v Version, rid request.ID) (Base, error) {

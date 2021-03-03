@@ -18,22 +18,89 @@ type service struct {
 }
 
 func (svc *service) Open(ctx context.Context, req *OpenRequest) (*View, error) {
+	const op errors.Op = "bucket.service.Open"
 
-	return nil, errors.New("Not implemented")
+	if err := req.Validate(); err != nil {
+		return nil, errors.New(op, errors.KindValidation, "invalid request", err)
+	}
+
+	o := open(req)
+
+	err := svc.store.InsertEvent(ctx, o)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewView(o.StreamID(), o)
 }
 
 func (svc *service) Update(ctx context.Context, req *UpdateRequest) (*View, error) {
+	const op errors.Op = "bucket.service.Update"
 
-	return nil, errors.New("Not implemented")
+	if err := req.Validate(); err != nil {
+		return nil, errors.New(op, errors.KindValidation, "invalid request", err)
+	}
+
+	stream, err := svc.store.GetStream(ctx, req.ID)
+	if err != nil {
+		return nil, errors.New(op, errors.KindExpected, "could not get stream", err)
+	}
+
+	u, err := update(req, stream)
+	if err != nil {
+		return nil, errors.New(op, errors.KindExpected, "update not allowed", err)
+	}
+
+	err = svc.store.InsertEvent(ctx, u)
+	if err != nil {
+		return nil, errors.New(op, errors.KindUnexpected, "could not insert", err)
+	}
+
+	stream = append(stream, u)
+
+	return NewView(u.StreamID(), stream...)
 }
 
 func (svc *service) Close(ctx context.Context, req *CloseRequest) (*View, error) {
+	const op errors.Op = "bucket.service.Close"
 
-	return nil, errors.New("Not implemented")
+	if err := req.Validate(); err != nil {
+		return nil, errors.New(op, errors.KindValidation, "invalid request", err)
+	}
+
+	stream, err := svc.store.GetStream(ctx, req.ID)
+	if err != nil {
+		return nil, errors.New(op, errors.KindExpected, "could not get stream", err)
+	}
+
+	c, err := close(req, stream)
+	if err != nil {
+		return nil, errors.New(op, errors.KindExpected, "closing not allowed", err)
+	}
+
+	err = svc.store.InsertEvent(ctx, c)
+	if err != nil {
+		return nil, errors.New(op, errors.KindUnexpected, "could not insert", err)
+	}
+
+	stream = append(stream, c)
+
+	return NewView(c.StreamID(), stream...)
 }
 
 func (svc *service) Get(ctx context.Context, id events.StreamID) (*View, error) {
-	return nil, errors.New("Not implemented")
+	const op errors.Op = "bucket.service.Get"
+
+	if err := id.Validate(); err != nil {
+		return nil, errors.New(op, errors.KindValidation, "invalid request", err)
+	}
+
+	stream, err := svc.store.GetStream(ctx, id)
+	if err != nil {
+		return nil, errors.New(op, errors.KindExpected, "could not get stream", err)
+	}
+
+	return NewView(id, stream...)
 }
 
 // OpenRequest represent arguments for opening new bucket

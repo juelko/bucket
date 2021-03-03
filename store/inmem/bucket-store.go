@@ -13,19 +13,63 @@ import (
 
 // data access object
 type dao struct {
-	t    string
-	at   time.Time
-	v    events.Version
-	rid  request.ID
-	data []byte
+	ts     string // value from events.Event.Type()
+	at     time.Time
+	v      events.Version
+	rid    request.ID
+	title  bucket.Title
+	desc   bucket.Description
+	closed bool // flag for closed streams
 }
 
-func (d dao) base(id events.StreamID) events.Base {
-	return events.Base{
+func (d *dao) encode(e events.Event) error {
+	const op errors.Op = "inmem.dao.parse"
+
+	d.ts = e.Type()
+	d.at = e.Occured()
+	d.v = e.Version()
+	d.rid = e.RequestID()
+	switch t := e.(type) {
+	case *bucket.Opened:
+		d.title = t.Title
+		d.desc = t.Desc
+		return nil
+	case *bucket.Updated:
+		d.title = t.Title
+		d.desc = t.Desc
+		return nil
+	case *bucket.Closed:
+		d.closed = true
+		return nil
+	default:
+		return errors.New(op, errors.KindUnexpected, "Unkown event type: "+d.ts)
+	}
+}
+
+// decodes dao and given id to returned event,
+// returns error and nil if type string dao.ts has unknown value
+func (d dao) decode(id events.StreamID) (events.Event, error) {
+	const op errors.Op = "inmem.dao.build"
+
+	eb := events.Base{
 		ID:  id,
 		RID: d.rid,
 		At:  d.at,
 		V:   d.v,
+	}
+
+	switch d.ts {
+	case "bucket.Opened":
+		return &bucket.Opened{Base: eb, Title: d.title, Desc: d.desc}, nil
+
+	case "bucket.Updated":
+		return &bucket.Updated{Base: eb, Title: d.title, Desc: d.desc}, nil
+
+	case "bucket.Closed":
+		return &bucket.Closed{Base: eb}, nil
+
+	default:
+		return nil, errors.New(op, errors.KindUnexpected, "Unkown event type: "+d.ts)
 	}
 }
 
@@ -42,16 +86,14 @@ type store struct {
 }
 
 func (s *store) InsertEvent(ctx context.Context, e events.Event) error {
-	const op errors.Op = "inmem.InsertEvent"
-
-	return s.insert(e)
-}
-
-func (s *store) insert(e events.Event) error {
-	const op errors.Op = "inmem.insert"
-
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+
+	return s.checkVersion(e)
+}
+
+func (s *store) checkVersion(e events.Event) error {
+	const op errors.Op = "inmem.store.checkVersion"
 
 	var expect events.Version
 
@@ -63,45 +105,60 @@ func (s *store) insert(e events.Event) error {
 	}
 
 	if expect != e.Version() {
-		return errors.New(op, errors.KindUnexpected, "Version error")
+		return errors.New(op, errors.KindUnexpected, "version error")
 	}
 
-	dao := dao{
-		t:    e.Type(),
-		at:   e.Occured(),
-		v:    e.Version(),
-		rid:  e.RequestID(),
-		data: e.Payload(),
+	return s.encodeToDao(e)
+}
+
+func (s *store) encodeToDao(e events.Event) error {
+	const op errors.Op = "inmem.store.encodeToDao"
+
+	var d dao
+
+	if err := d.encode(e); err != nil {
+		return errors.New(op, errors.KindUnexpected, "encoding error")
 	}
 
-	s.data[e.StreamID()] = append(daos, dao)
+	return s.insert(e.StreamID(), d)
+}
+
+func (s *store) insert(id events.StreamID, d dao) error {
+
+	s.data[id] = append(s.data[id], d)
 
 	return nil
+
 }
 
 func (s *store) GetStream(ctx context.Context, id events.StreamID) ([]events.Event, error) {
-	const op errors.Op = "inmem.GetStream"
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
+
+	return s.findStream(id)
+}
+
+func (s *store) findStream(id events.StreamID) ([]events.Event, error) {
+	const op errors.Op = "inmem.store.findStream"
 
 	daos, ok := s.data[id]
 	if !ok {
 		return nil, errors.New(op, errors.KindNotFound, "Stream not found")
 	}
 
-	return buildEvents(id, daos)
+	return decodeToEvents(id, daos)
 }
 
-func buildEvents(id events.StreamID, daos []dao) ([]events.Event, error) {
-	const op errors.Op = "inmem.buildEvents"
+func decodeToEvents(id events.StreamID, daos []dao) ([]events.Event, error) {
+	const op errors.Op = "inmem.decodeToEvents"
 
-	ret := []events.Event{}
+	ret := make([]events.Event, len(daos)+1)
 
 	for _, dao := range daos {
 
-		e, err := bucket.BuildEvent(dao.base(id), dao.t, dao.data)
+		e, err := dao.decode(id)
 		if err != nil {
-			return nil, err
+			return nil, errors.New(op, errors.KindUnexpected, "decoding error", err)
 		}
 		ret = append(ret, e)
 	}
