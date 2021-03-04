@@ -3,11 +3,9 @@ package bucket
 import (
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/juelko/bucket/pkg/errors"
 	"github.com/juelko/bucket/pkg/events"
-	"github.com/juelko/bucket/pkg/request"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -26,12 +24,14 @@ func TestOpen(t *testing.T) {
 			desc: "happy",
 			args: &OpenRequest{
 				ID:    "TestBucket",
-				RID:   testRID(),
-				Title: "TestName",
+				Title: "TestTitle",
 				Desc:  "Test Descritption",
 			},
-			want: &Opened{events.Base{ID: "TestBucket", RID: testRID(), At: atOpened, V: 1}, "TestName", "Test Descritption"},
-			err:  nil,
+			want: &Opened{
+				events.Base{ID: "TestBucket", V: 1},
+				BucketData{Title: "TestTitle", Description: "Test Descritption"},
+			},
+			err: nil,
 		},
 	}
 
@@ -41,8 +41,6 @@ func TestOpen(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			t.Parallel()
 
-			begin := time.Now()
-
 			got := open(tC.args)
 
 			want := tC.want.(*Opened)
@@ -50,11 +48,10 @@ func TestOpen(t *testing.T) {
 			require.True(t, ok, "failed type casting got to Updated")
 
 			assert.Equal(t, want.Type(), got.Type())
-			assert.True(t, e.Occured().After(begin))
-			assert.Equal(t, want.StreamID(), e.StreamID())
-			assert.Equal(t, want.Version(), e.Version())
+			assert.Equal(t, want.EntityID(), e.EntityID())
+			assert.Equal(t, want.EntityVersion(), e.EntityVersion())
 			assert.Equal(t, want.Title, e.Title)
-			assert.Equal(t, want.Desc, e.Desc)
+			assert.Equal(t, want.Description, e.Description)
 		})
 	}
 }
@@ -76,8 +73,11 @@ func TestUpdate(t *testing.T) {
 				Desc:  "New Descritption",
 			},
 			stream: openTestStream("TestBucket"),
-			want:   &Updated{events.Base{ID: "TestBucket", V: 2}, "NewTitle", "New Descritption"},
-			err:    nil,
+			want: &Updated{
+				events.Base{ID: "TestBucket", V: 2},
+				BucketData{"NewTitle", "New Descritption"},
+			},
+			err: nil,
 		},
 		{
 			desc: "closed stream",
@@ -120,8 +120,6 @@ func TestUpdate(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			t.Parallel()
 
-			begin := time.Now()
-
 			got, err := update(tC.req, tC.stream)
 
 			if tC.want != nil {
@@ -131,11 +129,10 @@ func TestUpdate(t *testing.T) {
 				require.True(t, ok, "failed type casting got to Updated")
 
 				assert.Equal(t, want.Type(), got.Type())
-				assert.True(t, e.Occured().After(begin))
-				assert.Equal(t, want.StreamID(), e.StreamID())
-				assert.Equal(t, want.Version(), e.Version())
+				assert.Equal(t, want.EntityID(), e.EntityID())
+				assert.Equal(t, want.EntityVersion(), e.EntityVersion())
 				assert.Equal(t, want.Title, e.Title)
-				assert.Equal(t, want.Desc, e.Desc)
+				assert.Equal(t, want.Description, e.Description)
 			} else {
 				require.Nil(t, got, "require got to be nil")
 				assert.Equal(t, tC.err, err)
@@ -191,8 +188,6 @@ func TestClose(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			t.Parallel()
 
-			begin := time.Now()
-
 			got, err := close(tC.req, tC.stream)
 
 			if tC.want != nil {
@@ -202,9 +197,8 @@ func TestClose(t *testing.T) {
 				require.True(t, ok, "failed type casting got to Closed")
 
 				assert.Equal(t, want.Type(), e.Type())
-				assert.True(t, e.Occured().After(begin))
-				assert.Equal(t, want.StreamID(), e.StreamID())
-				assert.Equal(t, want.Version(), e.Version())
+				assert.Equal(t, want.EntityID(), e.EntityID())
+				assert.Equal(t, want.EntityVersion(), e.EntityVersion())
 			} else {
 				require.Nil(t, got, "require got to be nil")
 				assert.Equal(t, tC.err, err)
@@ -218,21 +212,21 @@ func TestNewView(t *testing.T) {
 
 	testCases := []struct {
 		desc   string
-		id     events.StreamID
+		id     events.EntityID
 		stream []events.Event
 		want   *View
 		err    error
 	}{
 		{
 			desc:   "ok",
-			id:     events.StreamID("TestView"),
+			id:     events.EntityID("TestView"),
 			stream: closedTestStream("TestView"),
-			want:   &View{ID: "TestView", Title: "ClosedTitle", Description: "Closed Description", Version: 3, IsClosed: true, LastUpdate: atClosed},
+			want:   &View{ID: "TestView", Title: "ClosedTitle", Description: "Closed Description", Version: 3, IsClosed: true},
 			err:    nil,
 		},
 		{
 			desc:   "empty stream",
-			id:     events.StreamID("TestView"),
+			id:     events.EntityID("TestView"),
 			stream: []events.Event{},
 			want:   nil,
 			err:    &errors.Error{Op: "bucket.NewView", Kind: errors.KindUnexpected, Msg: "Error when build state for view", Wraps: fmt.Errorf("Empty stream")},
@@ -256,63 +250,60 @@ func TestNewView(t *testing.T) {
 func TestBuildState(t *testing.T) {
 	testCases := []struct {
 		desc   string
-		id     events.StreamID
+		id     events.EntityID
 		stream []events.Event
 		want   state
 		err    error
 	}{
 		{
 			desc:   "open",
-			id:     events.StreamID("TestView"),
+			id:     events.EntityID("TestView"),
 			stream: openTestStream("TestView"),
 			want: state{
-				id:     events.StreamID("TestView"),
+				id:     events.EntityID("TestView"),
 				title:  Title("TestTitle"),
 				desc:   Description("Test Description"),
 				closed: false,
 				v:      1,
-				last:   atOpened,
 			},
 			err: nil,
 		},
 		{
 			desc:   "updated",
-			id:     events.StreamID("TestView"),
+			id:     events.EntityID("TestView"),
 			stream: updatedTestStream("TestView"),
 			want: state{
-				id:     events.StreamID("TestView"),
+				id:     events.EntityID("TestView"),
 				title:  Title("UpdatedTitle"),
 				desc:   Description("Updated Description"),
 				closed: false,
 				v:      2,
-				last:   atUpdated,
 			},
 			err: nil,
 		},
 		{
 			desc:   "closed",
-			id:     events.StreamID("TestView"),
+			id:     events.EntityID("TestView"),
 			stream: closedTestStream("TestView"),
 			want: state{
-				id:     events.StreamID("TestView"),
+				id:     events.EntityID("TestView"),
 				title:  Title("ClosedTitle"),
 				desc:   Description("Closed Description"),
 				closed: true,
 				v:      3,
-				last:   atClosed,
 			},
 			err: nil,
 		},
 		{
 			desc:   "id mismatch",
-			id:     events.StreamID("TestView"),
+			id:     events.EntityID("TestView"),
 			stream: openTestStream("DifferentStream"),
 			want:   state{},
 			err:    fmt.Errorf("ID Mismatch"),
 		},
 		{
 			desc:   "empty stream",
-			id:     events.StreamID("TestView"),
+			id:     events.EntityID("TestView"),
 			stream: []events.Event{},
 			want:   state{},
 			err:    fmt.Errorf("Empty stream"),
@@ -374,35 +365,39 @@ func TestTitleValidation(t *testing.T) {
 }
 
 // helper funcs for testing
-func openTestStream(id events.StreamID) []events.Event {
+func openTestStream(id events.EntityID) []events.Event {
 
 	return []events.Event{
-		&Opened{events.Base{ID: id, RID: testRID(), At: atOpened, V: 1}, "TestTitle", "Test Description"},
+		&Opened{
+			events.Base{ID: id, V: 1},
+			BucketData{"TestTitle", "Test Description"},
+		},
 	}
 }
 
-func updatedTestStream(id events.StreamID) []events.Event {
+func updatedTestStream(id events.EntityID) []events.Event {
 	return []events.Event{
-		&Opened{events.Base{ID: id, RID: testRID(), At: atOpened, V: 1}, "TestTitle", "Test Description"},
-		&Updated{events.Base{ID: id, RID: testRID(), At: atUpdated, V: 2}, "UpdatedTitle", "Updated Description"},
+		&Opened{
+			events.Base{ID: id, V: 1},
+			BucketData{"TestTitle", "Test Description"},
+		},
+		&Updated{
+			events.Base{ID: id, V: 2},
+			BucketData{"UpdatedTitle", "Updated Description"},
+		},
 	}
 }
 
-func closedTestStream(id events.StreamID) []events.Event {
+func closedTestStream(id events.EntityID) []events.Event {
 	return []events.Event{
-		&Opened{events.Base{ID: id, RID: testRID(), At: atOpened, V: 1}, "TestTitle", "Test Description"},
-		&Updated{events.Base{ID: id, RID: testRID(), At: atUpdated, V: 2}, "ClosedTitle", "Closed Description"},
-		&Closed{events.Base{ID: id, RID: testRID(), At: atClosed, V: 3}},
+		&Opened{
+			events.Base{ID: id, V: 1},
+			BucketData{"TestTitle", "Test Description"},
+		},
+		&Updated{
+			events.Base{ID: id, V: 2},
+			BucketData{"ClosedTitle", "Closed Description"},
+		},
+		&Closed{events.Base{ID: id, V: 3}},
 	}
 }
-
-func testRID() request.ID {
-	return request.ID("10c0d59e-ca70-46d8-87fb-738be0c9b035")
-}
-
-// helper variables for testing
-var (
-	atOpened  time.Time = time.Date(2020, time.January, 1, 12, 0, 0, 0, time.UTC)
-	atUpdated time.Time = time.Date(2020, time.January, 1, 13, 0, 0, 0, time.UTC)
-	atClosed  time.Time = time.Date(2020, time.January, 1, 14, 0, 0, 0, time.UTC)
-)

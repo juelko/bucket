@@ -25,12 +25,12 @@ func TestError(t *testing.T) {
 		{
 			desc: "wrapped",
 			args: &Error{Op: "errors.TestError", Kind: KindUnexpected, Msg: "Test Error", Wraps: second},
-			want: "operation: errors.TestError, kind: Unexpected, error: Test Error, wraps: operation: errors.TestError, kind: Unexpected, error: Second Error",
+			want: "operation: errors.TestError, kind: Unexpected, error: Test Error",
 		},
 		{
 			desc: "wrapped other",
 			args: &Error{Op: "errors.TestError", Kind: KindUnexpected, Msg: "Test Error", Wraps: fmt.Errorf("some other error")},
-			want: "operation: errors.TestError, kind: Unexpected, error: Test Error, wraps: some other error",
+			want: "operation: errors.TestError, kind: Unexpected, error: Test Error",
 		},
 	}
 

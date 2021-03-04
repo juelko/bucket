@@ -1,52 +1,53 @@
 package bucket
 
 import (
-	"time"
-
 	"github.com/juelko/bucket/pkg/errors"
 	"github.com/juelko/bucket/pkg/events"
 )
 
+type BucketData struct {
+	Title       // bucket title
+	Description // bucket description
+}
+
 // Opened is a domain event and is emitted when bucket is opened
 type Opened struct {
-	events.Base             // Base event
-	Title       Title       // bucket title
-	Desc        Description // bucket description
+	events.Base // Base event
+	BucketData  // Bucket data
 }
 
 func (e *Opened) Type() string {
 	return "bucket.Opened"
 }
 
-// Business logic for opening
-func open(req *OpenRequest) events.Event {
-	return newOpened(req)
+func (e *Opened) Data() interface{} {
+	return e.BucketData
 }
 
-func newOpened(req *OpenRequest) events.Event {
-	be := events.Base{
-		ID:  req.ID,
-		RID: req.RID,
-		At:  time.Now(),
-		V:   1,
+// Business logic for opening
+func Open(req *OpenRequest) events.Event {
+	return &Opened{
+		events.Base{ID: req.ID, V: 1},
+		BucketData{Title: req.Title, Description: req.Desc},
 	}
-
-	return &Opened{be, req.Title, req.Desc}
 }
 
 // Updated is a domain event and is emitted when bucket is updated
 type Updated struct {
-	events.Base             // Base event
-	Title       Title       // new bucket title
-	Desc        Description // new bucket description
+	events.Base // Base event
+	BucketData  // Bucket data
 }
 
 func (e *Updated) Type() string {
 	return "bucket.Updated"
 }
 
+func (e *Updated) Data() interface{} {
+	return e.BucketData
+}
+
 // Business logic for updating
-func update(req *UpdateRequest, stream []events.Event) (events.Event, error) {
+func Update(req *UpdateRequest, stream []events.Event) (events.Event, error) {
 	return stateForUpdating(req, stream)
 }
 
@@ -68,14 +69,10 @@ func newUpdate(req *UpdateRequest, s *state) (events.Event, error) {
 		return nil, errors.New(op, errors.KindExpected, "Bucket is closed")
 	}
 
-	be := events.Base{
-		ID:  req.ID,
-		RID: req.RID,
-		At:  time.Now(),
-		V:   s.v + 1,
-	}
-
-	return &Updated{be, req.Title, req.Desc}, nil
+	return &Updated{
+		events.Base{ID: req.ID, V: s.v + 1},
+		BucketData{Title: req.Title, Description: req.Desc},
+	}, nil
 }
 
 // Closed is a domain event and is emitted when bucket is closed
@@ -86,9 +83,12 @@ type Closed struct {
 func (e *Closed) Type() string {
 	return "bucket.Closed"
 }
+func (e *Closed) Data() interface{} {
+	return nil
+}
 
 // Business logic for closing
-func close(req *CloseRequest, stream []events.Event) (events.Event, error) {
+func Close(req *CloseRequest, stream []events.Event) (events.Event, error) {
 	return stateForClosing(req, stream)
 }
 
@@ -110,12 +110,7 @@ func newClosed(req *CloseRequest, s *state) (events.Event, error) {
 		return nil, errors.New(op, errors.KindExpected, "Bucket allready closed")
 	}
 
-	be := events.Base{
-		ID:  req.ID,
-		RID: req.RID,
-		At:  time.Now(),
-		V:   s.v + 1,
-	}
-
-	return &Closed{be}, nil
+	return &Closed{
+		events.Base{ID: req.ID, V: s.v + 1},
+	}, nil
 }

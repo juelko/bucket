@@ -2,12 +2,11 @@ package bucket
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/juelko/bucket/pkg/events"
 )
 
-func buildState(id events.StreamID, stream []events.Event) (state, error) {
+func buildState(id events.EntityID, stream []events.Event) (state, error) {
 
 	ret := state{}
 
@@ -17,26 +16,23 @@ func buildState(id events.StreamID, stream []events.Event) (state, error) {
 
 	for _, e := range stream {
 
-		if id != e.StreamID() {
+		if id != e.EntityID() {
 			return state{}, fmt.Errorf("ID Mismatch")
 		}
 
 		switch event := e.(type) {
 		case *Opened:
-			ret.id = event.StreamID()
+			ret.id = event.EntityID()
 			ret.title = event.Title
-			ret.desc = event.Desc
-			ret.v = event.Version()
-			ret.last = event.Occured()
+			ret.desc = event.Description
+			ret.v = event.EntityVersion()
 		case *Updated:
 			ret.title = event.Title
-			ret.desc = event.Desc
-			ret.v = event.Version()
-			ret.last = event.Occured()
+			ret.desc = event.Description
+			ret.v = event.EntityVersion()
 		case *Closed:
 			ret.closed = true
-			ret.v = event.Version()
-			ret.last = event.Occured()
+			ret.v = event.EntityVersion()
 		default:
 			return state{}, fmt.Errorf("Stream contains unkown events")
 		}
@@ -46,10 +42,9 @@ func buildState(id events.StreamID, stream []events.Event) (state, error) {
 }
 
 type state struct {
-	id     events.StreamID
+	id     events.EntityID
 	title  Title
 	desc   Description
 	closed bool
-	last   time.Time
-	v      events.Version
+	v      events.EntityVersion
 }

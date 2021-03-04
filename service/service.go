@@ -3,38 +3,37 @@ package bucket
 import (
 	"context"
 
+	"github.com/juelko/bucket/bucket"
 	"github.com/juelko/bucket/pkg/errors"
 	"github.com/juelko/bucket/pkg/events"
-	"github.com/juelko/bucket/pkg/request"
-	"github.com/juelko/bucket/pkg/validator"
 )
 
-func NewService(s Store) Service {
+func NewService(s bucket.Store) bucket.Service {
 	return &service{s}
 }
 
 type service struct {
-	store Store
+	store bucket.Store
 }
 
-func (svc *service) Open(ctx context.Context, req *OpenRequest) (*View, error) {
+func (svc *service) Open(ctx context.Context, req *bucket.OpenRequest) (*bucket.View, error) {
 	const op errors.Op = "bucket.service.Open"
 
 	if err := req.Validate(); err != nil {
 		return nil, errors.New(op, errors.KindValidation, "invalid request", err)
 	}
 
-	o := open(req)
+	o := bucket.Open(req)
 
 	err := svc.store.InsertEvent(ctx, o)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewView(o.StreamID(), o)
+	return bucket.NewView(o.EntityID(), o)
 }
 
-func (svc *service) Update(ctx context.Context, req *UpdateRequest) (*View, error) {
+func (svc *service) Update(ctx context.Context, req *bucket.UpdateRequest) (*bucket.View, error) {
 	const op errors.Op = "bucket.service.Update"
 
 	if err := req.Validate(); err != nil {
@@ -46,7 +45,7 @@ func (svc *service) Update(ctx context.Context, req *UpdateRequest) (*View, erro
 		return nil, errors.New(op, errors.KindExpected, "could not get stream", err)
 	}
 
-	u, err := update(req, stream)
+	u, err := bucket.Update(req, stream)
 	if err != nil {
 		return nil, errors.New(op, errors.KindExpected, "update not allowed", err)
 	}
@@ -58,10 +57,10 @@ func (svc *service) Update(ctx context.Context, req *UpdateRequest) (*View, erro
 
 	stream = append(stream, u)
 
-	return NewView(u.StreamID(), stream...)
+	return bucket.NewView(u.EntityID(), stream...)
 }
 
-func (svc *service) Close(ctx context.Context, req *CloseRequest) (*View, error) {
+func (svc *service) Close(ctx context.Context, req *bucket.CloseRequest) (*bucket.View, error) {
 	const op errors.Op = "bucket.service.Close"
 
 	if err := req.Validate(); err != nil {
@@ -73,7 +72,7 @@ func (svc *service) Close(ctx context.Context, req *CloseRequest) (*View, error)
 		return nil, errors.New(op, errors.KindExpected, "could not get stream", err)
 	}
 
-	c, err := close(req, stream)
+	c, err := bucket.Close(req, stream)
 	if err != nil {
 		return nil, errors.New(op, errors.KindExpected, "closing not allowed", err)
 	}
@@ -85,10 +84,10 @@ func (svc *service) Close(ctx context.Context, req *CloseRequest) (*View, error)
 
 	stream = append(stream, c)
 
-	return NewView(c.StreamID(), stream...)
+	return bucket.NewView(c.EntityID(), stream...)
 }
 
-func (svc *service) Get(ctx context.Context, id events.StreamID) (*View, error) {
+func (svc *service) Get(ctx context.Context, id events.EntityID) (*bucket.View, error) {
 	const op errors.Op = "bucket.service.Get"
 
 	if err := id.Validate(); err != nil {
@@ -100,63 +99,5 @@ func (svc *service) Get(ctx context.Context, id events.StreamID) (*View, error) 
 		return nil, errors.New(op, errors.KindExpected, "could not get stream", err)
 	}
 
-	return NewView(id, stream...)
-}
-
-// OpenRequest represent arguments for opening new bucket
-type OpenRequest struct {
-	ID    events.StreamID
-	RID   request.ID
-	Title Title
-	Desc  Description
-}
-
-func (req *OpenRequest) Validate() error {
-	const op errors.Op = "bucket.OpenRequest.Validate"
-
-	if err := validator.Validate(req.ID, req.RID, req.Title); err != nil {
-		return errors.New(op, errors.KindValidation, "Invalid arguments", err)
-	}
-
-	return nil
-
-}
-
-type CloseRequest struct {
-	ID  events.StreamID
-	RID request.ID
-}
-
-func (req *CloseRequest) Validate() error {
-	const op errors.Op = "bucket.CloseRequest.Validate"
-
-	if err := validator.Validate(req.ID, req.RID); err != nil {
-		return errors.New(op, errors.KindValidation, "Invalid arguments", err)
-	}
-
-	return nil
-
-}
-
-type UpdateRequest struct {
-	ID    events.StreamID
-	RID   request.ID
-	Title Title
-	Desc  Description
-}
-
-func (req *UpdateRequest) Validate() error {
-	const op errors.Op = "bucket.UpdateRequest.Validate"
-
-	if err := validator.Validate(req.ID, req.RID, req.Title); err != nil {
-		return errors.New(op, errors.KindValidation, "Invalid arguments", err)
-	}
-
-	return nil
-
-}
-
-type Reponse struct {
-	View *View
-	Err  string
+	return bucket.NewView(id, stream...)
 }

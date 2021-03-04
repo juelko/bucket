@@ -33,22 +33,17 @@ type Error struct {
 	Wraps error  // Wraps error
 }
 
-func (e Error) Error() string {
-	var wraps string
-
-	if e.Wraps != nil {
-		wraps = e.Wraps.Error()
-	}
+func (e *Error) Error() string {
 
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "operation: %s, kind: %s, error: %s", e.Op, e.Kind, e.Msg)
 
-	if len(wraps) != 0 {
-		fmt.Fprintf(&b, ", wraps: %s", wraps)
-	}
-
 	return b.String()
+}
+
+func (e *Error) Unwrap() error {
+	return e.Wraps
 }
 
 // Equals reports wheter two Errors has the same content.
