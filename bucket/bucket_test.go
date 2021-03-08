@@ -17,7 +17,7 @@ func TestOpen(t *testing.T) {
 	testCases := []struct {
 		desc string
 		args *OpenRequest
-		want events.Event
+		want *Opened
 		err  error
 	}{
 		{
@@ -33,6 +33,16 @@ func TestOpen(t *testing.T) {
 			},
 			err: nil,
 		},
+		{
+			desc: "invalid id",
+			args: &OpenRequest{
+				ID:    "Invalid-ID!",
+				Title: "TestTitle",
+				Desc:  "Test Descritption",
+			},
+			want: nil,
+			err:  &errors.Error{Op: "bucket.Open", Kind: 3, Msg: "invalid request", Wraps: nil},
+		},
 	}
 
 	for i := range testCases {
@@ -41,17 +51,20 @@ func TestOpen(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			t.Parallel()
 
-			got := open(tC.args)
+			got, err := Open(tC.args)
 
-			want := tC.want.(*Opened)
-			e, ok := got.(*Opened)
-			require.True(t, ok, "failed type casting got to Updated")
+			if tC.want != nil {
+				require.Nil(t, err, "require error to be nil")
 
-			assert.Equal(t, want.Type(), got.Type())
-			assert.Equal(t, want.EntityID(), e.EntityID())
-			assert.Equal(t, want.EntityVersion(), e.EntityVersion())
-			assert.Equal(t, want.Title, e.Title)
-			assert.Equal(t, want.Description, e.Description)
+				assert.Equal(t, tC.want.Type(), got.Type())
+				assert.Equal(t, tC.want.EntityID(), got.EntityID())
+				assert.Equal(t, tC.want.EntityVersion(), got.EntityVersion())
+				assert.Equal(t, tC.want.Title, got.Title)
+				assert.Equal(t, tC.want.Description, got.Description)
+			} else {
+				require.Nil(t, got, "require got to be nil")
+				assert.Equal(t, tC.err, err)
+			}
 		})
 	}
 }
@@ -120,7 +133,7 @@ func TestUpdate(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := update(tC.req, tC.stream)
+			got, err := Update(tC.req, tC.stream)
 
 			if tC.want != nil {
 				require.Nil(t, err, "require error to be nil")
@@ -188,7 +201,7 @@ func TestClose(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := close(tC.req, tC.stream)
+			got, err := Close(tC.req, tC.stream)
 
 			if tC.want != nil {
 				require.Nil(t, err, "require error to be nil")

@@ -25,11 +25,17 @@ func (e *Opened) Data() interface{} {
 }
 
 // Business logic for opening
-func Open(req *OpenRequest) events.Event {
+func Open(req *OpenRequest) (*Opened, error) {
+	const op errors.Op = "bucket.Open"
+
+	if err := req.Validate(); err != nil {
+		return nil, errors.New(op, errors.KindValidation, "invalid request", err)
+	}
+
 	return &Opened{
 		events.Base{ID: req.ID, V: 1},
 		BucketData{Title: req.Title, Description: req.Desc},
-	}
+	}, nil
 }
 
 // Updated is a domain event and is emitted when bucket is updated
@@ -48,6 +54,12 @@ func (e *Updated) Data() interface{} {
 
 // Business logic for updating
 func Update(req *UpdateRequest, stream []events.Event) (events.Event, error) {
+	const op errors.Op = "bucket.Update"
+
+	if err := req.Validate(); err != nil {
+		return nil, errors.New(op, errors.KindValidation, "invalid request", err)
+	}
+
 	return stateForUpdating(req, stream)
 }
 
@@ -89,6 +101,12 @@ func (e *Closed) Data() interface{} {
 
 // Business logic for closing
 func Close(req *CloseRequest, stream []events.Event) (events.Event, error) {
+	const op errors.Op = "bucket.Close"
+
+	if err := req.Validate(); err != nil {
+		return nil, errors.New(op, errors.KindValidation, "invalid request", err)
+	}
+
 	return stateForClosing(req, stream)
 }
 

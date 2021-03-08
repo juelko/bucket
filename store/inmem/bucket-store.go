@@ -19,7 +19,7 @@ func NewBucketStore() bucket.Store {
 
 func NewTestBucketStore() bucket.Store {
 	open := dao{
-		t:    "bucket.Open",
+		t:    "bucket.Opened",
 		v:    1,
 		data: bucket.BucketData{Title: "OpenTitle", Description: "Open Description"},
 	}
@@ -49,63 +49,53 @@ type store struct {
 	data map[events.EntityID][]dao
 }
 
-func (s *store) InsertEvent(ctx context.Context, e events.Event) error {
+func (s *store) OpenStream(ctx context.Context, o *bucket.Opened) error {
+	const op errors.Op = "inmem.store.OpenStream"
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	return s.checkVersion(e)
-}
-
-func (s *store) checkVersion(e events.Event) error {
-	const op errors.Op = "inmem.store.checkVersion"
-
-	var expect events.EntityVersion
-
-	daos, ok := s.data[e.EntityID()]
-	if !ok {
-		expect = 1
-	} else {
-		expect = (daos[len(daos)-1].v + 1)
+	if s.exists(o.EntityID()) {
+		return errors.New(op, errors.KindAllreadyExists, "Allready exists")
 	}
 
-	if expect != e.EntityVersion() {
+	return s.insert(o)
+
+}
+
+func (s *store) InsertEvent(ctx context.Context, e events.Event) error {
+	const op errors.Op = "inmem.store.InsertEvent"
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	if !s.exists(e.EntityID()) {
+		return errors.New(op, errors.KindNotFound, "Stream not found")
+	}
+
+	if s.nextVersion(e.EntityID()) != e.EntityVersion() {
 		return errors.New(op, errors.KindUnexpected, "version error")
 	}
 
-	return s.encodeToDao(e)
+	return s.insert(e)
 }
 
-func (s *store) encodeToDao(e events.Event) error {
-	const op errors.Op = "inmem.store.encodeToDao"
-
+func (s *store) insert(e events.Event) error {
 	var d dao
 
 	d.encode(e)
 
-	return s.insert(e.EntityID(), d)
-}
-
-func (s *store) insert(id events.EntityID, d dao) error {
-
-	s.data[id] = append(s.data[id], d)
+	s.data[e.EntityID()] = append(s.data[e.EntityID()], d)
 
 	return nil
-
 }
 
 func (s *store) GetStream(ctx context.Context, id events.EntityID) ([]events.Event, error) {
+	const op errors.Op = "inmem.store.GetStream"
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
-	return s.findStream(id)
-}
-
-func (s *store) findStream(id events.EntityID) ([]events.Event, error) {
-	const op errors.Op = "inmem.store.findStream"
-
 	daos, ok := s.data[id]
 	if !ok {
-		return nil, errors.New(op, errors.KindNotFound, "Stream not found")
+		return []events.Event{}, errors.New(op, errors.KindNotFound, "Stream not found")
 	}
 
 	return decodeToEvents(id, daos)
@@ -114,18 +104,29 @@ func (s *store) findStream(id events.EntityID) ([]events.Event, error) {
 func decodeToEvents(id events.EntityID, daos []dao) ([]events.Event, error) {
 	const op errors.Op = "inmem.decodeToEvents"
 
-	ret := make([]events.Event, len(daos)+1)
+	ret := make([]events.Event, len(daos))
 
-	for _, dao := range daos {
+	for i, dao := range daos {
 
 		e, err := dao.decode(id)
 		if err != nil {
-			return nil, errors.New(op, errors.KindUnexpected, "decoding error", err)
+			return []events.Event{}, errors.New(op, errors.KindUnexpected, "decoding error", err)
 		}
-		ret = append(ret, e)
+		ret[i] = e
 	}
 
 	return ret, nil
+}
+
+func (s *store) exists(id events.EntityID) bool {
+
+	_, ok := s.data[id]
+
+	return ok
+}
+
+func (s *store) nextVersion(id events.EntityID) events.EntityVersion {
+	return events.EntityVersion(len(s.data[id]) + 1)
 }
 
 // data access object
@@ -154,14 +155,14 @@ func (d dao) decode(id events.EntityID) (events.Event, error) {
 	switch d.t {
 	case "bucket.Opened":
 		data := d.data.(bucket.BucketData)
-		return &bucket.Opened{eb, data}, nil
+		return &bucket.Opened{Base: eb, BucketData: data}, nil
 
 	case "bucket.Updated":
 		data := d.data.(bucket.BucketData)
-		return &bucket.Updated{eb, data}, nil
+		return &bucket.Updated{Base: eb, BucketData: data}, nil
 
 	case "bucket.Closed":
-		return &bucket.Closed{eb}, nil
+		return &bucket.Closed{Base: eb}, nil
 
 	default:
 		return nil, errors.New(op, errors.KindUnexpected, "Unkown event type: "+d.t)

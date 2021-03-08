@@ -16,24 +16,21 @@ type service struct {
 	store bucket.Store
 }
 
-func (svc *service) Open(ctx context.Context, req *bucket.OpenRequest) (*bucket.View, error) {
-	const op errors.Op = "bucket.service.Open"
+func (svc *service) Open(ctx context.Context, req *bucket.OpenRequest) (events.Event, error) {
 
-	if err := req.Validate(); err != nil {
-		return nil, errors.New(op, errors.KindValidation, "invalid request", err)
-	}
-
-	o := bucket.Open(req)
-
-	err := svc.store.InsertEvent(ctx, o)
+	o, err := bucket.Open(req)
 	if err != nil {
 		return nil, err
 	}
 
-	return bucket.NewView(o.EntityID(), o)
+	if err := svc.store.OpenStream(ctx, o); err != nil {
+		return nil, err
+	}
+
+	return o, nil
 }
 
-func (svc *service) Update(ctx context.Context, req *bucket.UpdateRequest) (*bucket.View, error) {
+func (svc *service) Update(ctx context.Context, req *bucket.UpdateRequest) (events.Event, error) {
 	const op errors.Op = "bucket.service.Update"
 
 	if err := req.Validate(); err != nil {
@@ -42,7 +39,7 @@ func (svc *service) Update(ctx context.Context, req *bucket.UpdateRequest) (*buc
 
 	stream, err := svc.store.GetStream(ctx, req.ID)
 	if err != nil {
-		return nil, errors.New(op, errors.KindExpected, "could not get stream", err)
+		return nil, errors.New(op, errors.KindNotFound, "Entity not found", err)
 	}
 
 	u, err := bucket.Update(req, stream)
@@ -55,12 +52,10 @@ func (svc *service) Update(ctx context.Context, req *bucket.UpdateRequest) (*buc
 		return nil, errors.New(op, errors.KindUnexpected, "could not insert", err)
 	}
 
-	stream = append(stream, u)
-
-	return bucket.NewView(u.EntityID(), stream...)
+	return u, nil
 }
 
-func (svc *service) Close(ctx context.Context, req *bucket.CloseRequest) (*bucket.View, error) {
+func (svc *service) Close(ctx context.Context, req *bucket.CloseRequest) (events.Event, error) {
 	const op errors.Op = "bucket.service.Close"
 
 	if err := req.Validate(); err != nil {
@@ -69,7 +64,7 @@ func (svc *service) Close(ctx context.Context, req *bucket.CloseRequest) (*bucke
 
 	stream, err := svc.store.GetStream(ctx, req.ID)
 	if err != nil {
-		return nil, errors.New(op, errors.KindExpected, "could not get stream", err)
+		return nil, errors.New(op, errors.KindNotFound, "Entity not found", err)
 	}
 
 	c, err := bucket.Close(req, stream)
@@ -82,9 +77,7 @@ func (svc *service) Close(ctx context.Context, req *bucket.CloseRequest) (*bucke
 		return nil, errors.New(op, errors.KindUnexpected, "could not insert", err)
 	}
 
-	stream = append(stream, c)
-
-	return bucket.NewView(c.EntityID(), stream...)
+	return c, nil
 }
 
 func (svc *service) Get(ctx context.Context, id events.EntityID) (*bucket.View, error) {
@@ -96,7 +89,7 @@ func (svc *service) Get(ctx context.Context, id events.EntityID) (*bucket.View, 
 
 	stream, err := svc.store.GetStream(ctx, id)
 	if err != nil {
-		return nil, errors.New(op, errors.KindExpected, "could not get stream", err)
+		return nil, errors.New(op, errors.KindNotFound, "Entity not found", err)
 	}
 
 	return bucket.NewView(id, stream...)
